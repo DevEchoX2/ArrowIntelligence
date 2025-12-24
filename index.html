@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArrowIntelligence | Pulse</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist.min.css" />
+  <style>
+    :root {
+      --radius: 1rem;
+      --sidebar-bg: #f9f9f9;
+      --chat-bg: #ffffff;
+      --user-msg-bg: #f4f4f4;
+      --border-color: #e5e5e5;
+      --text-main: #171717;
+      --text-muted: #676767;
+      --accent: #10a37f;
+      --code-bg: #0d1117;
+      --code-header: #161b22;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --sidebar-bg: #050505;
+        --chat-bg: #000000;
+        --user-msg-bg: #0a0a0a;
+        --border-color: #111111;
+        --text-main: #f5f5f5;
+        --text-muted: #737373;
+        --accent: #10a37f;
+      }
+    }
+    * { 
+      margin: 0; padding: 0; box-sizing: border-box; 
+      font-family: "Geist Sans", -apple-system, system-ui, sans-serif;
+    }
+    body { 
+      background-color: var(--chat-bg); 
+      color: var(--text-main); 
+      height: 100dvh; 
+      display: flex; 
+      overflow: hidden; 
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    .sidebar-transition { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s; }
+    
+    .message-enter { 
+      animation: slideUp 0.4s ease-out forwards;
+    }
+    @keyframes slideUp { 
+      from { opacity: 0; transform: translateY(10px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+
+    .prose pre { 
+      background: var(--code-bg); 
+      color: #e6edf3;
+      padding: 0; 
+      border-radius: 0.75rem; 
+      overflow: hidden; 
+      margin: 1.5rem 0; 
+      font-family: "Geist Mono", monospace;
+      font-size: 0.85rem;
+      border: 1px solid var(--border-color);
+      position: relative;
+    }
+    .prose code { font-family: inherit; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    
+    textarea:focus { outline: none; }
+    
+    .input-container {
+      max-width: 48rem;
+      width: 100%;
+      margin: 0 auto;
+      position: relative;
+      background: var(--user-msg-bg);
+      border-radius: 1.5rem;
+      transition: all 0.2s;
+      border: 1px solid var(--border-color);
+    }
+    .input-container:focus-within {
+      border-color: var(--text-muted);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .suggestion-card {
+      padding: 1.25rem;
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      background: var(--chat-bg);
+      text-align: left;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .suggestion-card:hover {
+      background: var(--user-msg-bg);
+      transform: translateY(-2px);
+    }
+
+    .ai-avatar {
+      width: 1.75rem;
+      height: 1.75rem;
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(16, 163, 127, 0.2);
+    }
+
+    .generated-image {
+      border-radius: 1rem;
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+      margin: 1rem 0;
+      cursor: zoom-in;
+      transition: transform 0.3s;
+    }
+    .generated-image:hover { transform: scale(1.02); }
+
+    .recording-pulse {
+      animation: pulse-red 1.5s infinite;
+    }
+    @keyframes pulse-red {
+      0% { color: #ef4444; transform: scale(1); opacity: 1; }
+      50% { color: #b91c1c; transform: scale(1.1); opacity: 0.7; }
+      100% { color: #ef4444; transform: scale(1); opacity: 1; }
+    }
+
+    .line-numbers {
+      background: #0d1117;
+      color: #484f58;
+      text-align: right;
+      padding: 1rem 0.5rem 1rem 1rem;
+      user-select: none;
+      border-right: 1px solid #30363d;
+      min-width: 3.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="root" class="w-full h-full"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19.0.0",
+      "react-dom": "https://esm.sh/react-dom@19.0.0/client",
+      "@google/genai": "https://esm.sh/@google/genai@1.34.0",
+      "htm": "https://esm.sh/htm@3.1.1",
+      "react-markdown": "https://esm.sh/react-markdown@9.0.1"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom';
+    import htm from 'htm';
+    import { GoogleGenAI } from '@google/genai';
+    import ReactMarkdown from 'react-markdown';
+
+    const html = htm.bind(React.createElement);
+    const CREATOR = "E_yo";
+    const DB_VERSION = "arrow_v18_persistent";
+
+    const Icons = {
+      New: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`,
+      Sidebar: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>`,
+      Send: () => html`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`,
+      Arrow: () => html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>`,
+      Edit: () => html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
+      Trash: () => html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+      Globe: () => html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      Code: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>`,
+      Write: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+      Image: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
+      Mic: () => html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>`,
+      Copy: () => html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+      Check: () => html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`
+    };
+
+    const SUGGESTIONS = {
+      everyday: [
+        { title: "Summarize text", desc: "Key points extraction.", prompt: "Summarize the following text into 3 concise bullet points: " },
+        { title: "Create visuals", desc: "Neural image generation.", prompt: "Generate a hyper-realistic image of a futuristic cyberpunk cityscape at sunset with vibrant neon lights and flying vehicles." },
+        { title: "Web Pulse", desc: "Real-time news search.", prompt: "Search for the latest news in AI development from the past 48 hours." }
+      ],
+      coding: [
+        { title: "Fast Optimizer", desc: "Algorithm refinement.", prompt: "Optimize this function for maximum throughput and minimum memory usage: " },
+        { title: "Debug Signal", desc: "Fix complex errors.", prompt: "Analyze this code and find potential race conditions or memory leaks: " },
+        { title: "Arch Design", desc: "Cloud scale systems.", prompt: "Help me architect a distributed event-driven system using Kafka and Node.js." }
+      ]
+    };
+
+    const CodeBlock = ({ children }) => {
+      const [copied, setCopied] = useState(false);
+      const lines = children.trim().split('\n');
+
+      const copy = () => {
+        navigator.clipboard.writeText(children.trim());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      };
+
+      return html`
+        <div class="relative group my-6 rounded-xl overflow-hidden border border-[var(--border-color)] bg-[var(--code-bg)] shadow-lg">
+          <div class="flex items-center justify-between px-4 py-2.5 bg-[var(--code-header)] border-b border-[#30363d]">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Source Output</span>
+            <button onClick=${copy} class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-all ${copied ? 'text-green-500' : 'text-gray-400 hover:text-white'}">
+              ${copied ? html`<${Icons.Check} />` : html`<${Icons.Copy} />`}
+              ${copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <div class="flex font-mono text-sm leading-6 overflow-x-auto scrollbar-hide">
+            <div class="line-numbers">
+              ${lines.map((_, i) => html`<div key=${i}>${i + 1}</div>`)}
+            </div>
+            <pre class="p-4 text-[#e6edf3] flex-1 whitespace-pre"><code>${children.trim()}</code></pre>
+          </div>
+        </div>
+      `;
+    };
+
+    const App = () => {
+      const [sessions, setSessions] = useState(() => JSON.parse(localStorage.getItem(DB_VERSION) || '[]'));
+      const [activeId, setActiveId] = useState(() => localStorage.getItem('arrow_active_id') || null);
+      const [input, setInput] = useState('');
+      const [mode, setMode] = useState('everyday');
+      const [sidebarOpen, setSidebarOpen] = useState(true);
+      const [isTyping, setIsTyping] = useState(false);
+      const [isRecording, setIsRecording] = useState(false);
+      const [editingId, setEditingId] = useState(null);
+      const scrollRef = useRef(null);
+      const recognitionRef = useRef(null);
+
+      const activeSession = sessions.find(s => s.id === activeId);
+
+      useEffect(() => {
+        localStorage.setItem(DB_VERSION, JSON.stringify(sessions));
+        if (activeId) localStorage.setItem('arrow_active_id', activeId);
+      }, [sessions, activeId]);
+
+      useEffect(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [activeSession?.messages, isTyping]);
+
+      useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          recognitionRef.current = new SpeechRecognition();
+          recognitionRef.current.continuous = false;
+          recognitionRef.current.interimResults = false;
+          recognitionRef.current.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            setInput(prev => prev + (prev ? ' ' : '') + transcript);
+          };
+          recognitionRef.current.onend = () => setIsRecording(false);
+          recognitionRef.current.onerror = () => setIsRecording(false);
+        }
+      }, []);
+
+      const toggleRecording = () => {
+        if (!recognitionRef.current) {
+          alert("Speech recognition is not supported in this environment.");
+          return;
+        }
+        if (isRecording) {
+          recognitionRef.current.stop();
+        } else {
+          try {
+            recognitionRef.current.start();
+            setIsRecording(true);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      };
+
+      const createChat = () => {
+        const id = Date.now().toString();
+        setSessions(prev => [{ id, title: 'New Signal', messages: [], mode }, ...prev]);
+        setActiveId(id);
+      };
+
+      const clearAllHistory = () => {
+        if (confirm("System reset: Wipe all neural history? This action is irreversible.")) {
+          setSessions([]);
+          setActiveId(null);
+          localStorage.removeItem(DB_VERSION);
+          localStorage.removeItem('arrow_active_id');
+        }
+      };
+
+      const handleAction = async (manualText = null, isRegen = false) => {
+        const text = manualText || input;
+        if (!text.trim() && !isRegen) return;
+
+        let targetId = activeId;
+        if (!targetId) {
+          targetId = Date.now().toString();
+          const newSession = { id: targetId, title: text.slice(0, 30), messages: [], mode };
+          setSessions(prev => [newSession, ...prev]);
+          setActiveId(targetId);
+        }
+
+        if (!isRegen) setInput('');
+        setIsTyping(true);
+
+        const aiId = Date.now() + 1;
+        const aiMsg = { id: aiId, role: 'assistant', content: '', isTyping: true, sources: [], images: [] };
+
+        setSessions(prev => prev.map(s => s.id === targetId ? {
+          ...s,
+          messages: isRegen ? [...s.messages, aiMsg] : [...s.messages, { id: Date.now(), role: 'user', content: text }, aiMsg],
+          title: s.messages.length === 0 ? text.slice(0, 30) : s.title
+        } : s));
+
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const isImageRequest = /generate|create|draw|make an image|picture/i.test(text);
+          
+          let model = mode === 'coding' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+          let config = {
+             systemInstruction: `You are ArrowIntelligence, a world-class adaptive assistant. 
+             Current Mode: ${mode}. Created by ${CREATOR}.
+             Output: Provide clean, technical, yet human-readable Markdown. 
+             Code: Use standard markdown code blocks (\` \` \`).
+             Adaptive: Refine accuracy based on conversation context.`,
+          };
+
+          if (isImageRequest) {
+            model = 'gemini-2.5-flash-image';
+            config.imageConfig = { aspectRatio: "1:1" };
+          } else if (mode === 'coding') {
+            config.thinkingConfig = { thinkingBudget: 16000 };
+          } else {
+            config.tools = [{ googleSearch: {} }];
+          }
+
+          const sessionObj = sessions.find(s => s.id === targetId) || { messages: [] };
+          const history = sessionObj.messages.filter(m => !m.isTyping).map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+          }));
+
+          const prompt = isRegen ? sessionObj.messages.slice().reverse().find(m => m.role === 'user').content : text;
+
+          const res = await ai.models.generateContent({
+            model,
+            contents: isImageRequest ? { parts: [{ text: prompt }] } : [...history, { role: 'user', parts: [{ text: prompt }] }],
+            config
+          });
+
+          let content = res.text || "";
+          let images = [];
+          
+          if (res.candidates?.[0]?.content?.parts) {
+            for (const part of res.candidates[0].content.parts) {
+              if (part.inlineData) {
+                images.push(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
+              }
+            }
+          }
+
+          const sources = res.candidates?.[0]?.groundingMetadata?.groundingChunks?.map(c => ({
+            title: c.web?.title || 'External Intelligence',
+            uri: c.web?.uri
+          })) || [];
+
+          setSessions(prev => prev.map(s => s.id === targetId ? {
+            ...s,
+            messages: s.messages.map(m => m.id === aiId ? { ...m, content: content || "Signal processed.", isTyping: false, sources, images } : m)
+          } : s));
+        } catch (e) {
+          console.error(e);
+          setSessions(prev => prev.map(s => s.id === targetId ? {
+            ...s,
+            messages: s.messages.map(m => m.id === aiId ? { ...m, content: `Neural Link Failure: ${e.message || "Lost connection"}. Try resetting your signal.`, isTyping: false } : m)
+          } : s));
+        } finally {
+          setIsTyping(false);
+        }
+      };
+
+      const renderEmptyState = () => html`
+        <div class="h-full flex flex-col items-center justify-center py-10 text-center animate-in fade-in slide-in-from-bottom-4 duration-1000">
+          <div class="w-16 h-16 bg-[var(--accent)] text-white rounded-2xl flex items-center justify-center mb-10 shadow-[0_0_30px_rgba(16,163,127,0.4)] rotate-3">
+            <${Icons.Arrow} width="32" height="32" />
+          </div>
+          <h2 class="text-4xl font-bold mb-4 tracking-tighter">ArrowIntelligence</h2>
+          <p class="text-[var(--text-muted)] text-sm max-w-sm mb-16 leading-relaxed opacity-60">High-fidelity neural processing active. Adaptive core online for ${mode} tasks.</p>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl px-4">
+            ${SUGGESTIONS[mode].map(s => html`
+              <button key=${s.title} onClick=${() => { setInput(s.prompt); handleAction(s.prompt); }} class="suggestion-card group relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <h4 class="font-bold text-[13px] mb-2 uppercase tracking-wide group-hover:text-[var(--accent)] transition-colors">${s.title}</h4>
+                <p class="text-xs text-[var(--text-muted)] leading-relaxed">${s.desc}</p>
+              </button>
+            `)}
+          </div>
+        </div>
+      `;
+
+      return html`
+        <div class="flex h-full w-full bg-black">
+          <aside class=${`flex flex-col border-r border-[var(--border-color)] bg-[var(--sidebar-bg)] sidebar-transition z-40 ${sidebarOpen ? 'w-72' : 'w-0 opacity-0 overflow-hidden'}`}>
+            <div class="p-5">
+              <button onClick=${createChat} class="flex items-center gap-3 w-full p-3.5 rounded-2xl border border-[var(--border-color)] hover:bg-[var(--user-msg-bg)] transition-all text-sm font-semibold shadow-sm hover:shadow-md">
+                <div class="text-[var(--accent)]"><${Icons.New} /></div>
+                New Signal
+              </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto px-4 space-y-1.5 scrollbar-hide py-3">
+              <div class="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)] opacity-30 px-3 mb-4">Chronology</div>
+              ${sessions.map(s => html`
+                <div key=${s.id} onClick=${() => setActiveId(s.id)} class=${`group relative flex items-center p-3.5 rounded-xl cursor-pointer transition-all ${activeId === s.id ? 'bg-[var(--user-msg-bg)] shadow-inner ring-1 ring-[var(--border-color)]' : 'hover:bg-[var(--user-msg-bg)]/50'}`}>
+                  <span class="text-[13px] truncate pr-8 font-medium ${activeId === s.id ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}">${s.title}</span>
+                  <button onClick=${(e) => { e.stopPropagation(); setSessions(prev => prev.filter(x => x.id !== s.id)); if (activeId === s.id) setActiveId(null); }} class="absolute right-3 opacity-0 group-hover:opacity-40 hover:!opacity-100 p-1.5 text-red-500 transition-all"><${Icons.Trash} /></button>
+                </div>
+              `)}
+            </div>
+
+            <div class="p-6 border-t border-[var(--border-color)] space-y-4">
+              <button onClick=${clearAllHistory} class="flex items-center gap-3 w-full p-3 rounded-xl text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-all text-xs font-bold uppercase tracking-wider">
+                <${Icons.Trash} />
+                Wipe History
+              </button>
+              <div class="flex items-center justify-between opacity-25 text-[9px] font-black uppercase tracking-[0.25em] px-1">
+                <span>V.18 • ${CREATOR}</span>
+                <span class="text-green-500 flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Pulse</span>
+              </div>
+            </div>
+          </aside>
+
+          <main class="flex-1 flex flex-col relative min-w-0 bg-[var(--chat-bg)]">
+            <header class="h-16 flex items-center justify-between px-8 z-30 border-b border-[var(--border-color)]/50">
+              <button onClick=${() => setSidebarOpen(!sidebarOpen)} class="p-2.5 hover:bg-[var(--user-msg-bg)] rounded-xl text-[var(--text-muted)] transition-colors"><${Icons.Sidebar} /></button>
+              
+              <div class="flex bg-[var(--user-msg-bg)] p-1 rounded-2xl border border-[var(--border-color)]">
+                <button onClick=${() => setMode('everyday')} class=${`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'everyday' ? 'bg-[var(--chat-bg)] shadow-sm text-[var(--text-main)]' : 'opacity-40 text-[var(--text-muted)] hover:opacity-100'}`}>Everyday</button>
+                <button onClick=${() => setMode('coding')} class=${`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'coding' ? 'bg-[var(--chat-bg)] shadow-sm text-[var(--text-main)]' : 'opacity-40 text-[var(--text-muted)] hover:opacity-100'}`}>Coding</button>
+              </div>
+              
+              <div class="w-10"></div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto scrollbar-hide">
+              <div class="max-w-3xl mx-auto px-8 py-12">
+                ${!activeId || (activeSession && activeSession.messages.length === 0) ? renderEmptyState() : activeSession.messages.map(m => html`
+                  <div key=${m.id} class=${`message-enter flex gap-6 mb-16 group ${m.role === 'user' ? 'justify-end' : ''}`}>
+                    ${m.role === 'assistant' && html`<div class="ai-avatar mt-1"><${Icons.Arrow} /></div>`}
+                    <div class=${`max-w-[92%] ${m.role === 'user' ? 'bg-[var(--user-msg-bg)] px-7 py-5 rounded-[2rem] border border-[var(--border-color)] shadow-sm' : 'flex-1 pt-1'}`}>
+                      <div class="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-loose">
+                        <${ReactMarkdown} components=${{
+                          pre: ({ children }) => html`<${CodeBlock}>${children.props.children}<//>`
+                        }}>
+                          ${m.content}
+                        <//>
+                        ${m.isTyping && html`<span class="inline-block w-1.5 h-4 bg-[var(--accent)] animate-pulse ml-1 align-middle rounded-full"></span>`}
+                      </div>
+
+                      ${m.images?.length > 0 && html`
+                        <div class="mt-8 flex flex-col gap-6">
+                          ${m.images.map((img, idx) => html`
+                            <div key=${idx} class="relative group/img rounded-2xl overflow-hidden">
+                              <img src=${img} class="generated-image" alt="Neural Synthesis" />
+                              <a href=${img} download="arrow-synthesis-${idx}.png" class="absolute top-6 right-6 p-3 bg-black/60 text-white rounded-xl opacity-0 group-hover/img:opacity-100 transition-all backdrop-blur-md">
+                                <${Icons.Arrow} />
+                              </a>
+                            </div>
+                          `)}
+                        </div>
+                      `}
+
+                      ${m.sources?.length > 0 && html`
+                        <div class="mt-8 flex flex-wrap gap-2.5 pt-6 border-t border-[var(--border-color)]">
+                          <div class="w-full text-[9px] font-black uppercase tracking-[0.25em] text-[var(--text-muted)] mb-2">Grounding Sources</div>
+                          ${m.sources.map(s => html`
+                            <a key=${s.uri} href=${s.uri} target="_blank" class="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--user-msg-bg)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] hover:border-[var(--text-muted)] transition-all truncate max-w-[200px]">
+                              ${s.title}
+                            </a>
+                          `)}
+                        </div>
+                      `}
+
+                      <div class="flex gap-4 mt-6 opacity-0 group-hover:opacity-60 transition-opacity">
+                        ${m.role === 'user' && html`<button onClick=${() => setEditingId(m.id)} class="p-1.5 hover:text-[var(--text-main)] transition-colors"><${Icons.Edit} /></button>`}
+                        <button onClick=${() => setSessions(prev => prev.map(s => s.id === activeId ? {...s, messages: s.messages.filter(msg => msg.id !== m.id)} : s))} class="p-1.5 hover:text-red-500 transition-colors"><${Icons.Trash} /></button>
+                      </div>
+                    </div>
+                  </div>
+                `)}
+                <div ref=${scrollRef} />
+              </div>
+            </div>
+
+            <div class="pb-10 px-8">
+              <div class="input-container shadow-sm hover:shadow-xl">
+                <div class="flex items-end gap-2.5 p-4 pl-6">
+                  <button 
+                    onClick=${toggleRecording}
+                    class=${`p-2.5 rounded-xl transition-all ${isRecording ? 'recording-pulse' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                  >
+                    <${Icons.Mic} />
+                  </button>
+                  <textarea 
+                    rows="1" 
+                    value=${input} 
+                    onChange=${e => setInput(e.target.value)}
+                    onKeyDown=${e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleAction())}
+                    placeholder=${`Signal input (${mode})...`} 
+                    class="flex-1 bg-transparent border-none outline-none resize-none py-2 text-[15px] placeholder:text-[var(--text-muted)] placeholder:opacity-40"
+                    style=${{ maxHeight: '250px' }}
+                  />
+                  <button 
+                    onClick=${() => handleAction()} 
+                    disabled=${!input.trim() || isTyping} 
+                    class="p-3 bg-[var(--text-main)] text-[var(--chat-bg)] rounded-2xl disabled:opacity-5 transition-all hover:scale-105 active:scale-95 shadow-lg"
+                  >
+                    <${Icons.Send} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            ${editingId && html`
+              <div class="fixed inset-0 z-50 flex items-center justify-center p-8 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
+                <div class="bg-[var(--chat-bg)] p-10 rounded-[2.5rem] w-full max-w-2xl border border-[var(--border-color)] shadow-2xl">
+                  <h4 class="text-xs font-black uppercase tracking-[0.3em] mb-8 flex items-center gap-3 opacity-40"><${Icons.Edit} /> Refine Signal</h4>
+                  <textarea id="edit-box" class="w-full h-48 bg-[var(--user-msg-bg)] p-6 rounded-3xl border border-[var(--border-color)] outline-none resize-none text-[15px]" defaultValue=${activeSession.messages.find(m => m.id === editingId).content} />
+                  <div class="flex justify-end gap-6 mt-10">
+                    <button onClick=${() => setEditingId(null)} class="px-8 py-3 text-xs font-black uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">Abort</button>
+                    <button onClick=${() => {
+                      const val = document.getElementById('edit-box').value;
+                      setSessions(prev => prev.map(s => s.id === activeId ? {...s, messages: s.messages.map(m => m.id === editingId ? {...m, content: val} : m)} : s));
+                      setEditingId(null);
+                    }} class="px-10 py-3 bg-[var(--accent)] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:brightness-110 transition-all">Update Signal</button>
+                  </div>
+                </div>
+              </div>
+            `}
+          </main>
+        </div>
+      `;
+    };
+
+    createRoot(document.getElementById('root')).render(html`<${App} />`);
+  </script>
+</body>
+</html>
