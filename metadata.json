@@ -1,9 +1,7 @@
+
 {
-  "name": "ArrowIntelligence Pro",
-  "description": "A high-performance AI platform with Search, Image/Video Generation, and Maps integration.",
   "requestFramePermissions": [
-    "camera",
     "microphone",
-    "geolocation"
+    "camera"
   ]
 }
