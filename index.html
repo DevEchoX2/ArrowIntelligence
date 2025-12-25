@@ -10,181 +10,122 @@
   <style>
     :root {
       --primary: #10a37f;
-      --primary-glow: rgba(16, 163, 127, 0.2);
-      --bg-dark: #09090b;
-      --bg-card: #121217;
-      --border: rgba(255, 255, 255, 0.06);
-      --text-main: #f4f4f5;
-      --text-muted: #a1a1aa;
+      --primary-hover: #0d8a6a;
+      --primary-glow: rgba(16, 163, 127, 0.15);
+      
+      /* Dark Theme */
+      --bg-main: #0d0d0d;
+      --bg-sidebar: #171717;
+      --bg-card: #212121;
+      --border: rgba(255, 255, 255, 0.08);
+      --text-main: #ececec;
+      --text-muted: #9b9b9b;
+      
+      /* Syntax Highlighting (Dark) */
+      --code-bg: #000000;
+      --token-keyword: #ff7b72;
+      --token-string: #a5d6ff;
+      --token-comment: #8b949e;
+      --token-function: #d2a8ff;
+      --token-number: #f2cc60;
+      --token-operator: #ff7b72;
+    }
+
+    body.light {
+      --bg-main: #ffffff;
+      --bg-sidebar: #f9f9f9;
+      --bg-card: #ffffff;
+      --border: rgba(0, 0, 0, 0.08);
+      --text-main: #0d0d0d;
+      --text-muted: #676767;
+      
+      /* Syntax Highlighting (Light) */
+      --code-bg: #f6f8fa;
+      --token-keyword: #d73a49;
+      --token-string: #032f62;
+      --token-comment: #6a737d;
+      --token-function: #6f42c1;
+      --token-number: #005cc5;
+      --token-operator: #d73a49;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; outline: none !important; }
     
     body {
-      background-color: var(--bg-dark);
+      background-color: var(--bg-main);
       color: var(--text-main);
       font-family: "Geist Sans", sans-serif;
       height: 100dvh;
       overflow: hidden;
       display: flex;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
 
-    .neural-grid {
-      position: fixed;
-      inset: 0;
-      background-image: 
-        linear-gradient(to right, rgba(255,255,255,0.015) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255,255,255,0.015) 1px, transparent 1px);
-      background-size: 32px 32px;
-      mask-image: radial-gradient(circle at center, black, transparent 90%);
-      z-index: -1;
-    }
-
-    .glass-effect {
-      background: rgba(18, 18, 23, 0.75);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      border: 1px solid var(--border);
-    }
-
-    .sidebar-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     
-    .message-user {
-      background: #1e1e24;
-      border: 1px solid var(--border);
-      border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
-      padding: 0.85rem 1.1rem;
-      max-width: 85%;
+    .message-ai { padding: 1.5rem 0.5rem; max-width: 850px; margin: 0 auto; width: 100%; }
+    .message-user { 
+      background: var(--bg-card); 
+      border: 1px solid var(--border); 
+      border-radius: 1.5rem; 
+      padding: 0.75rem 1.25rem; 
+      margin-left: auto; 
+      max-width: 80%; 
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     }
 
     .input-dock {
-      background: rgba(24, 24, 27, 0.85);
-      backdrop-filter: blur(20px);
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 1.25rem;
-      transition: all 0.2s ease;
+      border-radius: 1.5rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .input-dock:focus-within {
       border-color: var(--primary);
-      box-shadow: 0 0 25px -5px var(--primary-glow);
     }
 
-    .avatar-ring {
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      position: relative;
-      padding: 3px;
-      background: conic-gradient(from 0deg, var(--primary), transparent, var(--primary));
-      animation: rotate 6s linear infinite;
-    }
-    
-    @media (min-width: 768px) {
-      .avatar-ring { width: 240px; height: 240px; }
-    }
-    
-    @keyframes rotate {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
-    .avatar-inner {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      overflow: hidden;
-      background: #000;
-      position: relative;
-      z-index: 2;
-    }
-
-    .scrollbar-hide::-webkit-scrollbar { display: none; }
-    
+    /* Code Blocks Styling */
     pre {
-      background: #0d0d0f !important;
-      border: 1px solid var(--border);
-      border-radius: 1rem;
-      margin: 1.25rem 0;
-      font-size: 0.875rem;
-      position: relative;
-      overflow: hidden;
+      background: var(--code-bg) !important;
+      overflow: auto;
+      margin: 0;
+      padding: 0;
     }
+    code { font-family: "Geist Mono", monospace; font-size: 0.875rem; line-height: 1.6; display: block; padding: 1rem; }
     
-    .code-container {
-      display: flex;
-      counter-reset: line;
+    /* Syntax Tokens */
+    .token-keyword { color: var(--token-keyword); font-weight: 600; }
+    .token-string { color: var(--token-string); }
+    .token-comment { color: var(--token-comment); font-style: italic; }
+    .token-function { color: var(--token-function); }
+    .token-number { color: var(--token-number); }
+    .token-operator { color: var(--token-operator); }
+
+    /* Custom Scrollbar */
+    .custom-scroll::-webkit-scrollbar { width: 5px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 10px; }
+
+    /* Call Visualizer */
+    @keyframes wave {
+      0%, 100% { height: 8px; }
+      50% { height: 32px; }
+    }
+    .wave-bar {
+      width: 3px;
+      background: var(--primary);
+      border-radius: 2px;
+      margin: 0 1.5px;
+      animation: wave 1s infinite ease-in-out;
     }
 
-    .line-numbers {
-      padding: 1.25rem 0.75rem;
-      border-right: 1px solid var(--border);
-      background: rgba(255,255,255,0.01);
-      text-align: right;
-      color: rgba(255,255,255,0.15);
-      user-select: none;
-      min-width: 3.5rem;
-      font-family: "Geist Mono", monospace;
+    .glass-effect {
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
-
-    .line-number::before {
-      counter-increment: line;
-      content: counter(line);
-      display: block;
-      line-height: 1.5;
-    }
-
-    code {
-      font-family: "Geist Mono", monospace;
-      display: block;
-      padding: 1.25rem;
-      width: 100%;
-      white-space: pre;
-      overflow-x: auto;
-      line-height: 1.5;
-    }
-
-    .token-keyword { color: #d55fde; font-weight: 600; }
-    .token-string { color: #89ca78; }
-    .token-comment { color: #5c6370; font-style: italic; }
-    .token-function { color: #61afef; }
-    .token-number { color: #d19a66; }
-    .token-operator { color: #56b6c2; }
-    .token-type { color: #e5c07b; }
-    .token-boolean { color: #d19a66; }
-    .token-bracket { color: #abb2bf; opacity: 0.7; }
-
-    .tooltip {
-      position: absolute;
-      bottom: 125%;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1c1c1f;
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-      opacity: 0;
-      pointer-events: none;
-      transition: all 0.2s;
-      border: 1px solid var(--border);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      z-index: 50;
-    }
-    .group:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-4px); }
-
-    .prose { font-size: 1rem; line-height: 1.6; color: var(--text-main); }
-    .prose h1, .prose h2, .prose h3 { font-weight: 800; tracking: -0.02em; color: white; margin-top: 1.5em; margin-bottom: 0.5em; }
-    .prose code { background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: inherit; font-size: 0.9em; }
-    
-    @keyframes pulse-ring {
-      0% { transform: scale(0.95); opacity: 0.5; }
-      50% { transform: scale(1.05); opacity: 0.2; }
-      100% { transform: scale(0.95); opacity: 0.5; }
-    }
-    .animate-pulse-ring { animation: pulse-ring 2s infinite ease-in-out; }
   </style>
 <script type="importmap">
 {
@@ -201,7 +142,6 @@
 </script>
 </head>
 <body class="dark">
-  <div class="neural-grid"></div>
   <div id="root" class="w-full h-full flex"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
