@@ -1,75 +1,44 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { geminiService } from './backend';
-import ReactMarkdown from 'react-markdown';
 import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
-
-// --- Types ---
-interface Message {
-  id: number;
-  role: 'user' | 'assistant';
-  content: string;
-  attachment?: string;
-  isTyping?: boolean;
-  images?: string[];
-  videos?: string[];
-  sources?: { title: string; uri: string }[];
-}
-
-interface Session {
-  id: string;
-  title: string;
-  messages: Message[];
-  mode: 'everyday' | 'coding';
-  timestamp: number;
-}
+import ReactMarkdown from 'react-markdown';
+import { geminiService } from './backend';
 
 // --- Icons ---
 const Icons = {
-  Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>,
-  Sidebar: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>,
-  Send: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>,
-  Logo: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>,
-  Trash: ({ width = "16", height = "16" }: { width?: string; height?: string }) => <svg width={width} height={height} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-  Mic: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
-  VideoCall: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>,
-  Image: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>,
-  Theme: ({ dark }: { dark: boolean }) => dark 
-    ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
-    : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
-  Copy: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
-  Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-  Close: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>,
-  Volume: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
-  Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A5 5 0 0 1 12 7v5H7a5 5 0 0 1-2-9.5V2h4.5z"/><path d="M14.5 2A5 5 0 0 0 12 7v5h5a5 5 0 0 0 2-9.5V2h-4.5z"/><path d="M12 12v7a5 5 0 0 1-5 5H2v-4.5a5 5 0 0 1 9.5-2H12z"/><path d="M12 12v7a5 5 0 0 0 5 5h5v-4.5a5 5 0 0 0-9.5-2H12z"/></svg>
+  Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>,
+  Sidebar: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>,
+  Send: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>,
+  Logo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
+  Phone: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
+  Video: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>,
+  X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>,
+  Mic: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>,
+  MicOff: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
+  Globe: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
+  Search: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+  Eye: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
+  Copy: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+  Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>,
+  Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
 };
 
-const VOICES = [
-  { name: 'Kore', gender: 'Female', label: 'Classic Kore' },
-  { name: 'Zephyr', gender: 'Female', label: 'Energetic Zephyr' },
-  { name: 'Puck', gender: 'Male', label: 'Casual Puck' },
-  { name: 'Charon', gender: 'Male', label: 'Deep Charon' },
-  { name: 'Fenrir', gender: 'Male', label: 'Bold Fenrir' }
-];
+// --- Raw Audio Utils ---
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
 
-const DB_NAME = "arrow_neural_v4_pulse";
-const MEMORY_KEY = "arrow_neural_memory";
-
-const decode = (base64: string) => {
+function decode(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
-};
+}
 
-const encode = (bytes: Uint8Array) => {
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-};
-
-const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
@@ -78,457 +47,596 @@ const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: 
     for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
   }
   return buffer;
-};
+}
 
-// --- Custom Components ---
-const CodeBlock = ({ children, className }: { children: any, className?: string }) => {
+// --- Component: Syntax Highlighted Code ---
+const EnhancedCodeBlock = ({ children }: { children: string }) => {
+  const code = children.trim();
+  const lines = code.split('\n');
   const [copied, setCopied] = useState(false);
-  const codeString = String(children).replace(/\n$/, '');
-  
-  const handleCopy = () => {
-    navigator.clipboard.writeText(codeString);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Improved Robust Syntax Highlighting
+  const highlightedCode = useMemo(() => {
+    return code
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/(\/\/.*)/g, '<span class="token-comment">$1</span>')
+      .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="token-string">$1</span>')
+      .replace(/('(?:[^'\\]|\\.)*')/g, '<span class="token-string">$1</span>')
+      .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|class|extends|await|async|try|catch|new|this|throw|break|continue|case|switch|default|delete|in|of|void|yield|do)\b/g, '<span class="token-keyword">$1</span>')
+      .replace(/\b(string|number|boolean|any|void|null|undefined|Array|Promise|Record|Partial|Omit|Pick|unknown|never|object|symbol)\b/g, '<span class="token-type">$1</span>')
+      .replace(/\b(true|false)\b/g, '<span class="token-boolean">$1</span>')
+      .replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
+      .replace(/\b([a-zA-Z_]\w*)(?=\s*\()/g, '<span class="token-function">$1</span>')
+      .replace(/(\+\+|--|===|!==|==|!=|>=|<=|=>|&&|\|\||[+\-*/%&|^!~=<>])/g, '<span class="token-operator">$1</span>')
+      .replace(/([\[\]{}()])/g, '<span class="token-bracket">$1</span>');
+  }, [code]);
+
   return (
-    <div className="relative group my-6 rounded-xl overflow-hidden border border-[var(--border-color)] bg-black shadow-2xl">
-      <div className="flex items-center justify-between px-4 py-2 bg-white/5 backdrop-blur-md border-b border-white/10">
-        <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{className?.replace('language-', '') || 'code'}</span>
-        <button onClick={handleCopy} className="text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition-colors flex items-center gap-2">
-          {copied ? 'Copied' : <><Icons.Copy /> Copy</>}
+    <div className="relative group/code">
+      <div className="absolute top-3 right-3 flex items-center gap-2 opacity-0 group-hover/code:opacity-100 transition-all duration-300">
+        <button 
+          onClick={copyToClipboard}
+          className="flex items-center gap-2 px-3 py-1.5 glass-effect text-[10px] font-bold rounded-lg border border-white/10 hover:border-[var(--primary)] transition-all"
+        >
+          {copied ? <Icons.Check /> : <Icons.Copy />}
+          {copied ? "Synced" : "Copy Code"}
         </button>
       </div>
-      <pre className="!m-0 !rounded-none !border-none !bg-transparent p-5 overflow-x-auto font-mono text-sm leading-relaxed text-[#e0e0e0]">
-        <code>{children}</code>
-      </pre>
-    </div>
-  );
-};
-
-// --- Neural Avatar Call View ---
-const NeuralCallView = ({ onClose, voiceName, voiceRate, neuralMemory }: { onClose: () => void, voiceName: string, voiceRate: number, neuralMemory: string }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState('Initializing Presence...');
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const analyzerRef = useRef<AnalyserNode | null>(null);
-  const inputAudioCtxRef = useRef<AudioContext | null>(null);
-  const outputAudioCtxRef = useRef<AudioContext | null>(null);
-  const liveSessionRef = useRef<any>(null);
-
-  useEffect(() => {
-    const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    inputAudioCtxRef.current = inputCtx;
-    outputAudioCtxRef.current = outputCtx;
-
-    const analyzer = outputCtx.createAnalyser();
-    analyzer.fftSize = 256;
-    analyzerRef.current = analyzer;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const gl = canvas.getContext('2d');
-    if (!gl) return;
-
-    let frame = 0;
-    const draw = () => {
-      frame++;
-      const w = canvas.width = window.innerWidth;
-      const h = canvas.height = window.innerHeight;
-      gl.clearRect(0, 0, w, h);
-
-      const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-      analyzer.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-      const intensity = avg / 128;
-      setIsSpeaking(intensity > 0.1);
-
-      const centerX = w / 2;
-      const centerY = h / 2;
-      const baseRadius = Math.min(w, h) * 0.12;
-
-      // Transformer Attention Visualizer (Floating Neural Points)
-      for (let i = 0; i < 40; i++) {
-        const angle = (frame * 0.01 + (i * (Math.PI * 2) / 40));
-        const dist = baseRadius * 2 + Math.sin(frame * 0.05 + i) * 20;
-        const px = centerX + Math.cos(angle) * dist;
-        const py = centerY + Math.sin(angle) * dist;
-        
-        gl.beginPath();
-        gl.arc(px, py, 1 + intensity * 5, 0, Math.PI * 2);
-        gl.fillStyle = `rgba(16, 163, 127, ${0.1 + intensity})`;
-        gl.fill();
-        
-        gl.beginPath();
-        gl.moveTo(centerX, centerY);
-        gl.lineTo(px, py);
-        gl.strokeStyle = `rgba(16, 163, 127, ${0.05 * intensity})`;
-        gl.stroke();
-      }
-
-      gl.beginPath();
-      const r = baseRadius + intensity * 30;
-      gl.arc(centerX, centerY, r, 0, Math.PI * 2);
-      const grad = gl.createRadialGradient(centerX, centerY, 0, centerX, centerY, r);
-      grad.addColorStop(0, '#10a37f');
-      grad.addColorStop(1, 'rgba(16, 163, 127, 0)');
-      gl.fillStyle = grad;
-      gl.fill();
-
-      requestAnimationFrame(draw);
-    };
-    draw();
-
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    let nextStartTime = 0;
-    const sources = new Set<AudioBufferSourceNode>();
-
-    const startLive = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const sessionPromise = ai.live.connect({
-          model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-          callbacks: {
-            onopen: () => {
-              setStatus('Neural Link Synchronized');
-              const source = inputCtx.createMediaStreamSource(stream);
-              const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-              scriptProcessor.onaudioprocess = (e) => {
-                const inputData = e.inputBuffer.getChannelData(0);
-                const int16 = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-                const blob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-                sessionPromise.then(s => s.sendRealtimeInput({ media: blob }));
-              };
-              source.connect(scriptProcessor);
-              scriptProcessor.connect(inputCtx.destination);
-            },
-            onmessage: async (m: LiveServerMessage) => {
-              const audioB64 = m.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-              if (audioB64) {
-                nextStartTime = Math.max(nextStartTime, outputCtx.currentTime);
-                const buffer = await decodeAudioData(decode(audioB64), outputCtx, 24000, 1);
-                const source = outputCtx.createBufferSource();
-                source.buffer = buffer;
-                source.playbackRate.value = voiceRate;
-                source.connect(analyzer);
-                analyzer.connect(outputCtx.destination);
-                source.start(nextStartTime);
-                nextStartTime += buffer.duration / voiceRate;
-                sources.add(source);
-                source.onended = () => sources.delete(source);
-              }
-              if (m.serverContent?.interrupted) {
-                sources.forEach(s => s.stop());
-                sources.clear();
-                nextStartTime = 0;
-              }
-            }
-          },
-          config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-            systemInstruction: `You are in a video call. Use a persona that is human-like and empathetic. ${neuralMemory ? `MEMORY: ${neuralMemory}` : ""}.`
-          }
-        });
-        liveSessionRef.current = sessionPromise;
-      } catch (e) { setStatus('Neural Link Denied: Check Mic'); }
-    };
-    startLive();
-
-    return () => {
-      liveSessionRef.current?.then((s: any) => s.close());
-      inputCtx.close();
-      outputCtx.close();
-    };
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-in fade-in duration-700">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-60" />
-      <div className="relative z-10 flex flex-col items-center gap-10">
-        <div className={`ai-avatar w-32 h-32 scale-[2.5] shadow-[0_0_100px_rgba(16,163,127,0.4)] ${isSpeaking ? 'voice-ripple' : ''}`}><Icons.Logo /></div>
-        <div className="text-center">
-          <h2 className="text-4xl font-black italic tracking-tighter text-white mb-2">ArrowIntelligence</h2>
-          <p className="text-[10px] font-black uppercase tracking-[0.5em] text-[var(--accent)] animate-pulse">{status}</p>
+      <div className="code-container">
+        <div className="line-numbers">
+          {lines.map((_, i) => (
+            <span key={i} className="line-number" />
+          ))}
         </div>
-      </div>
-      <div className="absolute bottom-16 flex items-center gap-6">
-        <button onClick={onClose} className="px-10 py-5 bg-red-600 hover:bg-red-700 text-white rounded-[2rem] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 shadow-2xl flex items-center gap-3"><Icons.Close /> Terminate Sync</button>
+        <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
       </div>
     </div>
   );
 };
 
 const App = () => {
-  const [sessions, setSessions] = useState<Session[]>(() => {
-    try { const d = localStorage.getItem(DB_NAME); return d ? JSON.parse(d) : []; } catch(e) { return []; }
-  });
-  const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem('arrow_active_id') || null);
-  const [neuralMemory, setNeuralMemory] = useState(() => localStorage.getItem(MEMORY_KEY) || "");
+  const [sessions, setSessions] = useState<any[]>(() => JSON.parse(localStorage.getItem('arrow_sessions_minimal') || '[]'));
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<'everyday' | 'coding'>('everyday');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
-  const [isVoiceChat, setIsVoiceChat] = useState(false);
-  const [isVideoCall, setIsVideoCall] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [voiceName, setVoiceName] = useState(() => localStorage.getItem('arrow_voice_name') || 'Kore');
-  const [voiceRate, setVoiceRate] = useState(() => Number(localStorage.getItem('arrow_voice_rate')) || 1.0);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('arrow_theme') as 'light' | 'dark') || 'dark');
-  const [attachedImage, setAttachedImage] = useState<{ data: string, mimeType: string, preview: string } | null>(null);
-  const [latency, setLatency] = useState(0);
+  const [callMode, setCallMode] = useState<'none' | 'voice' | 'video'>('none');
+  const [botPfp, setBotPfp] = useState<string>(localStorage.getItem('arrow_bot_pfp_minimal') || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3Z0NGZwaHpsN3ZidGxyMmZzdnB6bnB6bnB6bnB6bnB6bnB6bnB6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/l41lTfuxV5K15y7du/giphy.gif');
+  const [pfpType, setPfpType] = useState<'image' | 'video'>(localStorage.getItem('arrow_bot_pfp_type_minimal') as any || 'image');
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  
+  // States for search, preview, settings
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState({
+    voiceName: localStorage.getItem('arrow_voice_name') || 'Puck',
+    speakingRate: parseFloat(localStorage.getItem('arrow_speaking_rate') || '1.0'),
+  });
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const sessionPromiseRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const nextStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    localStorage.setItem(DB_NAME, JSON.stringify(sessions));
-    if (activeId) localStorage.setItem('arrow_active_id', activeId);
-  }, [sessions, activeId]);
-
-  useEffect(() => { localStorage.setItem(MEMORY_KEY, neuralMemory); }, [neuralMemory]);
+    localStorage.setItem('arrow_sessions_minimal', JSON.stringify(sessions));
+  }, [sessions]);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('arrow_theme', theme);
-  }, [theme]);
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [sessions]);
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: 'smooth' }); }, [sessions, isTyping]);
+  // --- Filtered Sessions Search ---
+  const filteredSessions = useMemo(() => {
+    if (!searchTerm) return sessions;
+    const term = searchTerm.toLowerCase();
+    return sessions.filter(s => 
+      s.title?.toLowerCase().includes(term) || 
+      s.messages.some((m: any) => m.content.toLowerCase().includes(term))
+    );
+  }, [sessions, searchTerm]);
 
-  const initAudio = () => {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+  // --- Live API Session Management ---
+  const startLiveSession = async (mode: 'voice' | 'video') => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === 'video' });
+      videoStreamRef.current = stream;
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      const inputContext = new AudioContext({ sampleRate: 16000 });
+
+      const sessionPromise = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        callbacks: {
+          onopen: () => {
+            const source = inputContext.createMediaStreamSource(stream);
+            const scriptProcessor = inputContext.createScriptProcessor(4096, 1, 1);
+            scriptProcessor.onaudioprocess = (e) => {
+              const inputData = e.inputBuffer.getChannelData(0);
+              const int16 = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+              sessionPromise.then(s => s.sendRealtimeInput({ 
+                media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } 
+              }));
+            };
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(inputContext.destination);
+            setIsMicActive(true);
+          },
+          onmessage: async (msg: LiveServerMessage) => {
+            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData && audioContextRef.current) {
+              setIsAiSpeaking(true);
+              const buffer = await decodeAudioData(decode(audioData), audioContextRef.current, 24000, 1);
+              const source = audioContextRef.current.createBufferSource();
+              source.buffer = buffer;
+              source.connect(audioContextRef.current.destination);
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, audioContextRef.current.currentTime);
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += buffer.duration;
+              sourcesRef.current.add(source);
+              source.onended = () => {
+                sourcesRef.current.delete(source);
+                if (sourcesRef.current.size === 0) setIsAiSpeaking(false);
+              };
+            }
+            if (msg.serverContent?.interrupted) {
+              sourcesRef.current.forEach(s => s.stop());
+              sourcesRef.current.clear();
+              setIsAiSpeaking(false);
+              nextStartTimeRef.current = 0;
+            }
+          },
+          onerror: (e) => console.error('Signal Error:', e),
+          onclose: () => {
+            setCallMode('none');
+            setIsMicActive(false);
+            setIsAiSpeaking(false);
+          }
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { 
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceSettings.voiceName as any } } 
+          },
+          systemInstruction: `You are ArrowIntelligence. You are on a live call. Be brief, professional, and focus on logical accuracy.`
+        }
+      });
+      sessionPromiseRef.current = sessionPromise;
+      setCallMode(mode);
+    } catch (err) {
+      console.error(err);
+      alert("Neural Feed offline. Verify permissions.");
+    }
   };
 
-  const handleCopy = useCallback((text: string) => navigator.clipboard.writeText(text), []);
+  const endCall = () => {
+    sessionPromiseRef.current?.then((s: any) => s.close());
+    videoStreamRef.current?.getTracks().forEach(t => t.stop());
+    setCallMode('none');
+    setIsMicActive(false);
+    setIsAiSpeaking(false);
+    nextStartTimeRef.current = 0;
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || isTyping) return;
+    const userMsg = { role: 'user', content: input, id: Date.now() };
+    const aiMsg = { role: 'assistant', content: '', id: Date.now() + 1, isTyping: true, sources: [] };
+    
+    let sid = activeId;
+    if (!sid) {
+      sid = Date.now().toString();
+      const newSess = { id: sid, title: input.slice(0, 32), messages: [userMsg, aiMsg], timestamp: Date.now() };
+      setSessions([newSess, ...sessions]);
+      setActiveId(sid);
+    } else {
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: [...s.messages, userMsg, aiMsg] } : s));
+    }
+
+    setInput('');
+    setIsTyping(true);
+    setIsPreviewOpen(false);
+
+    try {
+      const history = (sessions.find(s => s.id === sid)?.messages || []).map((m: any) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+      
+      const stream = geminiService.streamChat('gemini-3-flash-preview', userMsg.content, history, [{ googleSearch: {} }]);
+      let full = '';
+      let currentSources: any[] = [];
+
+      for await (const chunk of stream) {
+        const text = (chunk as any).text || '';
+        full += text;
+        
+        const chunks = (chunk as any).candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (chunks) {
+           const newSources = chunks.filter((c: any) => c.web).map((c: any) => c.web);
+           currentSources = [...new Set([...currentSources, ...newSources])];
+        }
+
+        setSessions(prev => prev.map(s => s.id === sid ? {
+          ...s,
+          messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: full, sources: currentSources } : m)
+        } : s));
+      }
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, isTyping: false } : m) } : s));
+    } catch (e) {
+      console.error(e);
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: "Neural logic failed. Connection severed.", isTyping: false } : m) } : s));
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handlePfpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      const type = file.type.startsWith('video') ? 'video' : 'image';
+      setBotPfp(url);
+      setPfpType(type);
+      localStorage.setItem('arrow_bot_pfp_minimal', url);
+      localStorage.setItem('arrow_bot_pfp_type_minimal', type);
+    }
+  };
+
+  const updateVoiceSetting = (key: string, val: any) => {
+    const newSettings = { ...voiceSettings, [key]: val };
+    setVoiceSettings(newSettings);
+    localStorage.setItem(`arrow_${key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)}`, val.toString());
+  };
 
   const activeSession = sessions.find(s => s.id === activeId);
 
-  const createChat = () => {
-    const id = Date.now().toString();
-    const newSession: Session = { id, title: 'New Thread', messages: [], mode, timestamp: Date.now() };
-    setSessions(prev => [newSession, ...prev]);
-    setActiveId(id);
-  };
-
-  const handleSpeechRecognition = () => {
-    initAudio();
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-    if (recognitionRef.current) { recognitionRef.current.stop(); return; }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.onstart = () => setIsVoiceChat(true);
-    recognition.onend = () => { setIsVoiceChat(false); recognitionRef.current = null; };
-    recognition.onresult = (e: any) => handleAction(e.results[0][0].transcript, true);
-    recognition.start();
-    recognitionRef.current = recognition;
-  };
-
-  const handleAction = async (manualText: string | null = null, voiceTriggered = false) => {
-    initAudio();
-    const text = (manualText || input).trim();
-    if (!text && !attachedImage) return;
-
-    const isVideo = /animate|video|motion/i.test(text);
-    const isImage = /generate|create image|render image|picture/i.test(text);
-
-    let targetId = activeId;
-    if (!targetId) {
-      targetId = Date.now().toString();
-      const newSession: Session = { id: targetId, title: text.slice(0, 30), messages: [], mode, timestamp: Date.now() };
-      setSessions(prev => [newSession, ...prev]);
-      setActiveId(targetId);
-    }
-
-    if (!manualText) setInput('');
-    const currentImage = attachedImage;
-    setAttachedImage(null);
-    setIsTyping(true);
-
-    const aiId = Date.now() + 1;
-    const aiMsg: Message = { id: aiId, role: 'assistant', content: '', isTyping: true };
-
-    setSessions(prev => prev.map(s => s.id === targetId ? {
-      ...s,
-      messages: [...s.messages, { id: Date.now(), role: 'user', content: text, attachment: currentImage?.preview }, aiMsg],
-      title: s.messages.length === 0 ? text.slice(0, 30) : s.title
-    } : s));
-
-    const startTime = Date.now();
-
-    try {
-      if (isVideo) {
-        const videoUrl = await geminiService.generateVideo(text, currentImage?.data, currentImage?.mimeType);
-        setSessions(prev => prev.map(s => s.id === targetId ? {
-          ...s,
-          messages: s.messages.map(m => m.id === aiId ? { ...m, content: "Neural synthesis finalized.", isTyping: false, videos: [videoUrl] } : m)
-        } : s));
-      } else if (isImage) {
-        const { text: aiText, images } = await geminiService.generateImage(text, currentImage?.data, currentImage?.mimeType);
-        setSessions(prev => prev.map(s => s.id === targetId ? {
-          ...s,
-          messages: s.messages.map(m => m.id === aiId ? { ...m, content: aiText, isTyping: false, images } : m)
-        } : s));
-      } else {
-        const model = mode === 'coding' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
-        const history = (sessions.find(s => s.id === targetId)?.messages || [])
-          .filter(m => !m.isTyping)
-          .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-
-        const stream = geminiService.streamChat(model, text, history, mode === 'everyday' ? [{ googleSearch: {} }] : [], neuralMemory);
-        
-        let fullContent = '';
-        let sources: any[] = [];
-
-        for await (const chunk of stream) {
-          fullContent += (chunk as any).text || "";
-          const grounding = (chunk as any).candidates?.[0]?.groundingMetadata?.groundingChunks;
-          if (grounding) sources = grounding.map((c: any) => ({ title: c.web?.title, uri: c.web?.uri }));
-
-          setSessions(prev => prev.map(s => s.id === targetId ? {
-            ...s,
-            messages: s.messages.map(m => m.id === aiId ? { ...m, content: fullContent, sources } : m)
-          } : s));
-        }
-
-        setSessions(prev => prev.map(s => s.id === targetId ? {
-          ...s,
-          messages: s.messages.map(m => m.id === aiId ? { ...m, isTyping: false } : m)
-        } : s));
-
-        const finalHistory = [...history, { role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: fullContent }] }];
-        geminiService.extractInsights(finalHistory).then(insights => {
-          if (insights) setNeuralMemory(prev => (prev + "\n" + insights).trim());
-        });
-      }
-      setLatency(Date.now() - startTime);
-    } catch (e: any) {
-      setSessions(prev => prev.map(s => s.id === targetId ? {
-        ...s,
-        messages: s.messages.map(m => m.id === aiId ? { ...m, content: `Neural Exception: ${e.message}`, isTyping: false } : m)
-      } : s));
-    } finally { setIsTyping(false); }
-  };
-
   return (
-    <div className="flex h-full w-full bg-[var(--sidebar-bg)] overflow-hidden" onClick={initAudio}>
-      <aside className={`flex flex-col border-r border-[var(--border-color)] bg-[var(--sidebar-bg)] sidebar-transition z-40 h-full overflow-hidden ${sidebarOpen ? 'w-64' : 'w-0 opacity-0'}`}>
-        <div className="p-4 flex-shrink-0">
-          <button onClick={createChat} className="flex items-center gap-3 w-full p-3 rounded-xl border border-[var(--border-color)] hover:bg-[var(--user-msg-bg)] transition-all text-sm font-semibold bg-[var(--chat-bg)] shadow-sm group">
-            <span className="text-[var(--accent)] group-hover:rotate-90 transition-transform duration-300"><Icons.Plus /></span>
-            New Thread
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-3 space-y-1 scrollbar-hide pb-8">
-          {sessions.map(s => (
-            <div key={s.id} onClick={() => setActiveId(s.id)} className={`group relative flex items-center p-3 rounded-xl cursor-pointer transition-all ${activeId === s.id ? 'bg-[var(--user-msg-bg)]' : 'hover:bg-[var(--user-msg-bg)]/50'}`}>
-              <span className={`text-xs truncate pr-8 font-medium ${activeId === s.id ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}>{s.title || 'Untitled'}</span>
-              <button onClick={(e) => { e.stopPropagation(); setSessions(prev => prev.filter(x => x.id !== s.id)); if (activeId === s.id) setActiveId(null); }} className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:scale-110 transition-all"><Icons.Trash width="14" height="14" /></button>
+    <div className="flex h-screen w-full bg-[var(--bg-dark)] text-[var(--text-main)] overflow-hidden selection:bg-[var(--primary)] selection:text-white">
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="glass-effect w-full max-w-sm rounded-[2rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 p-8">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col">
+                <h3 className="text-xl font-black tracking-tight">Audio Parameters</h3>
+                <span className="text-[10px] text-[var(--primary)] font-bold tracking-[0.2em] uppercase mt-0.5">Core Voice Processor</span>
+              </div>
+              <button onClick={() => setShowSettingsModal(false)} className="p-2 hover:bg-white/5 rounded-full transition-all group">
+                <Icons.X />
+              </button>
             </div>
-          ))}
-        </div>
-        <div className="p-4 border-t border-[var(--border-color)]">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent)] bg-[var(--accent-glow)] p-3 rounded-xl">
-            <Icons.Brain />
-            <span>Persona Synced</span>
+            
+            <div className="space-y-8">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] block mb-4">Neural Persona (Gender/Style)</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { name: 'Puck', label: 'Masculine', desc: 'Authoritative' },
+                    { name: 'Kore', label: 'Feminine', desc: 'Professional' },
+                    { name: 'Zephyr', label: 'Fluid', desc: 'Neutral' },
+                    { name: 'Charon', label: 'Basitone', desc: 'Resonant' }
+                  ].map(v => (
+                    <button 
+                      key={v.name}
+                      onClick={() => updateVoiceSetting('voiceName', v.name)}
+                      className={`p-4 rounded-2xl border transition-all text-left group ${voiceSettings.voiceName === v.name ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-white shadow-[0_0_20px_rgba(16,163,127,0.1)]' : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20'}`}
+                    >
+                      <div className={`text-xs font-black ${voiceSettings.voiceName === v.name ? 'text-[var(--primary)]' : 'text-white'}`}>{v.label}</div>
+                      <div className="text-[9px] text-[var(--text-muted)] mt-1 font-bold group-hover:text-white/60">{v.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                   <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Speaking Velocity</label>
+                   <span className="text-[10px] font-black text-[var(--primary)]">{voiceSettings.speakingRate.toFixed(1)}x</span>
+                </div>
+                <div className="relative flex items-center h-6">
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="2.0" 
+                    step="0.1" 
+                    value={voiceSettings.speakingRate}
+                    onChange={(e) => updateVoiceSetting('speakingRate', parseFloat(e.target.value))}
+                    className="w-full accent-[var(--primary)] h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setShowSettingsModal(false)}
+              className="w-full mt-10 py-4 rounded-2xl bg-[var(--primary)] text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-[var(--primary)]/20 active:scale-95 transition-all"
+            >
+              Initialize Changes
+            </button>
           </div>
+        </div>
+      )}
+
+      {/* Call UI */}
+      {callMode !== 'none' && (
+        <div className="fixed inset-0 z-50 glass-effect flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="absolute top-10 left-10 flex items-center gap-4">
+            <div className="w-10 h-10 bg-[var(--primary)] rounded-xl flex items-center justify-center shadow-lg shadow-[var(--primary)]/20"><Icons.Logo /></div>
+            <div className="flex flex-col">
+              <span className="font-black text-sm uppercase tracking-widest">Neural Stream</span>
+              <span className="text-[10px] text-[var(--primary)] font-bold tracking-[0.2em] uppercase">E2EE Linked</span>
+            </div>
+          </div>
+          
+          <div className="relative group">
+            <div className="avatar-ring">
+              <div className="avatar-inner">
+                {pfpType === 'video' ? (
+                  <video src={botPfp} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                ) : (
+                  <img src={botPfp} className="w-full h-full object-cover" alt="AI Avatar" />
+                )}
+              </div>
+            </div>
+            {isAiSpeaking && <div className="absolute -inset-8 border-2 border-[var(--primary)] rounded-full animate-ping opacity-10" />}
+            {isAiSpeaking && <div className="absolute -inset-4 border border-[var(--primary)] rounded-full animate-pulse opacity-30" />}
+            
+            <label className="absolute inset-0 z-10 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur-md">
+              <Icons.Plus />
+              <span className="text-[10px] font-black uppercase tracking-widest mt-2">Update Visual</span>
+              <input type="file" className="hidden" accept="image/*,video/*,.gif" onChange={handlePfpChange} />
+            </label>
+          </div>
+
+          <div className="mt-12 text-center">
+            <h2 className="text-2xl font-black tracking-tight">ArrowIntelligence</h2>
+            <div className="flex items-center justify-center gap-3 mt-3">
+              <div className={`w-2.5 h-2.5 rounded-full ${isAiSpeaking ? 'bg-[var(--primary)] shadow-[0_0_10px_var(--primary)] animate-pulse' : 'bg-white/10'}`} />
+              <p className="text-[var(--text-muted)] text-[10px] font-black uppercase tracking-widest">{isAiSpeaking ? 'Neural Signal Transmitting' : 'Waiting for Audio Input'}</p>
+            </div>
+          </div>
+
+          <div className="mt-16 flex gap-6 items-center">
+            <button 
+              onClick={() => setShowSettingsModal(true)}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all bg-white/5 border border-white/10 hover:border-white/30 active:scale-95 group"
+            >
+              <Icons.Settings />
+            </button>
+            <button onClick={() => setIsMicActive(!isMicActive)} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isMicActive ? 'bg-white/5 hover:bg-white/10 border border-white/10' : 'bg-red-500/10 text-red-500 border border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.1)]'}`}>
+              {isMicActive ? <Icons.Mic /> : <Icons.MicOff />}
+            </button>
+            <button onClick={endCall} className="w-20 h-20 bg-red-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-red-600/30 hover:scale-110 active:scale-95 transition-all">
+              <Icons.X />
+            </button>
+          </div>
+          
+          {callMode === 'video' && (
+            <div className="absolute bottom-10 right-10 w-52 h-32 rounded-2xl overflow-hidden border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-black">
+              <video autoPlay muted ref={el => { if (el) el.srcObject = videoStreamRef.current; }} className="w-full h-full object-cover grayscale scale-x-[-1]" />
+              <div className="absolute top-2 left-2 px-2 py-0.5 glass-effect rounded text-[8px] font-black uppercase">Local Input</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <aside className={`sidebar-transition ${sidebarOpen ? 'w-64' : 'w-0'} bg-[var(--bg-card)] border-r border-[var(--border)] flex flex-col overflow-hidden`}>
+        <div className="p-6 flex flex-col gap-5 flex-shrink-0">
+          <div className="flex gap-2">
+            <button onClick={() => { setActiveId(null); setInput(''); }} className="flex-1 flex items-center justify-center gap-2 bg-[var(--primary)] hover:opacity-90 active:scale-95 transition-all py-3 rounded-xl font-black text-[11px] uppercase tracking-widest text-white shadow-xl shadow-[var(--primary)]/10">
+              <Icons.Plus /> New Thread
+            </button>
+            <button onClick={() => setSidebarOpen(false)} className="p-3 hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10"><Icons.Sidebar /></button>
+          </div>
+          
+          <div className="relative group">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[var(--primary)] transition-colors">
+              <Icons.Search />
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search cognition logs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input w-full pl-10 pr-4 py-2.5 text-xs outline-none font-medium"
+            />
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto px-3 scrollbar-hide py-2 space-y-1">
+          <div className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] px-5 py-3 opacity-60">Neural Timeline</div>
+          {filteredSessions.length > 0 ? (
+            filteredSessions.map((s: any) => (
+              <button 
+                key={s.id} 
+                onClick={() => setActiveId(s.id)} 
+                className={`w-full p-3.5 rounded-xl mb-1 cursor-pointer transition-all flex items-center gap-3 border text-left group ${activeId === s.id ? 'bg-white/[0.04] border-white/10 shadow-inner' : 'hover:bg-white/[0.02] border-transparent'}`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full transition-all ${activeId === s.id ? 'bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]' : 'bg-white/10 group-hover:bg-white/30'}`} />
+                <span className={`flex-1 truncate text-xs font-bold tracking-tight ${activeId === s.id ? 'text-white' : 'text-white/40 group-hover:text-white/70'}`}>{s.title || "Empty Fragment"}</span>
+              </button>
+            ))
+          ) : (
+            <div className="px-6 py-12 text-center opacity-20 flex flex-col items-center gap-3">
+              <Icons.Search />
+              <p className="text-[9px] uppercase font-black tracking-widest">No matching logs</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-[var(--border)] flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0 border border-white/5"><Icons.Logo /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)]">Prime v3.4</p>
+              <p className="text-[9px] text-[var(--text-muted)] truncate font-bold">Encrypted Active</p>
+            </div>
+          </div>
+          <button 
+             onClick={() => setShowSettingsModal(true)}
+             className="p-2 text-white/20 hover:text-white transition-colors"
+          >
+            <Icons.Settings />
+          </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative min-w-0 bg-[var(--chat-bg)] h-full overflow-hidden">
-        <header className="h-14 flex items-center justify-between px-6 border-b border-[var(--border-color)] z-30 flex-shrink-0 bg-[var(--chat-bg)]/80 backdrop-blur-sm">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[var(--user-msg-bg)] rounded-lg text-[var(--text-muted)] transition-colors"><Icons.Sidebar /></button>
-            <div className="mode-switch flex">
-              <button onClick={() => setMode('everyday')} className={`mode-btn ${mode === 'everyday' ? 'active' : ''}`}>Everyday</button>
-              <button onClick={() => setMode('coding')} className={`mode-btn ${mode === 'coding' ? 'active' : ''}`}>Coding</button>
+      {/* Main Chat Space */}
+      <main className="flex-1 flex flex-col relative">
+        <header className="h-16 flex items-center justify-between px-8 border-b border-[var(--border)] bg-[var(--bg-dark)]/50 backdrop-blur-md z-10">
+          <div className="flex items-center gap-6">
+            {!sidebarOpen && <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10"><Icons.Sidebar /></button>}
+            <div className="flex items-center gap-3 font-black text-xs uppercase tracking-[0.3em] text-[var(--text-muted)] cursor-default select-none">
+              <span className="text-[var(--primary)] drop-shadow-[0_0_10px_var(--primary-glow)]"><Icons.Logo /></span>
+              ArrowIntelligence
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsVideoCall(true)} className="p-2.5 bg-[var(--accent-glow)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white rounded-xl transition-all shadow-sm"><Icons.VideoCall /></button>
-            <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-[var(--user-msg-bg)] rounded-lg text-[var(--text-muted)] transition-colors"><Icons.Settings /></button>
-            <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} className="p-2 hover:bg-[var(--user-msg-bg)] rounded-lg text-[var(--text-muted)] transition-colors"><Icons.Theme dark={theme === 'dark'} /></button>
+            <div className="flex items-center gap-1 bg-white/5 border border-white/5 p-1 rounded-xl mr-2">
+               <button onClick={() => startLiveSession('voice')} className="p-2 text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-all" title="Audio Stream"><Icons.Phone /></button>
+               <button onClick={() => startLiveSession('video')} className="p-2 text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-all" title="Video Stream"><Icons.Video /></button>
+            </div>
+            <button 
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2.5 text-[var(--text-muted)] hover:text-white rounded-xl hover:bg-white/5 transition-all"
+            >
+              <Icons.Settings />
+            </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="max-w-3xl mx-auto px-6 py-12 min-h-full flex flex-col">
-            {!activeId || (activeSession && activeSession.messages.length === 0) ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-20 text-center animate-in fade-in duration-1000">
-                <div className="ai-avatar w-14 h-14 mb-8 shadow-2xl scale-110"><Icons.Logo /></div>
-                <h2 className="text-4xl font-black italic tracking-tighter text-[var(--text-main)] mb-3">ArrowIntelligence</h2>
-                <p className="text-[var(--text-muted)] text-[10px] mb-12 opacity-50 uppercase tracking-[0.4em] font-black">Neural Processor v4.0 Active</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl">
-                  <button onClick={() => handleAction("Analyze my technical level based on my previous discussions.")} className="p-6 rounded-2xl border border-[var(--border-color)] hover:bg-[var(--user-msg-bg)] text-left transition-all group hover:scale-[1.02] bg-[var(--chat-bg)] shadow-sm">
-                    <div className="text-[10px] font-black uppercase mb-1.5 text-[var(--accent)] tracking-widest">Persona Check</div>
-                    <div className="text-xs text-[var(--text-muted)] group-hover:text-[var(--text-main)] leading-relaxed">Query your long-term neural profile</div>
-                  </button>
-                  <button onClick={() => setIsVideoCall(true)} className="p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--accent-glow)]/30 hover:bg-[var(--accent-glow)] text-left transition-all group hover:scale-[1.02] shadow-sm">
-                    <div className="text-[10px] font-black uppercase mb-1.5 text-[var(--accent)] tracking-widest">Live Link</div>
-                    <div className="text-xs text-[var(--text-muted)] group-hover:text-[var(--text-main)] leading-relaxed">Low-latency video interaction</div>
-                  </button>
+        <div className="flex-1 overflow-y-auto px-6 scrollbar-hide bg-gradient-to-b from-[var(--bg-dark)] to-black">
+          <div className="max-w-3xl mx-auto py-16 space-y-12">
+            {(!activeSession || activeSession.messages.length === 0) ? (
+              <div className="flex flex-col items-center justify-center pt-24 text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-[#0c8a6a] text-white rounded-[2rem] flex items-center justify-center mb-8 shadow-2xl shadow-[var(--primary)]/20 rotate-12"><Icons.Logo /></div>
+                <h1 className="text-3xl font-black mb-3 tracking-tighter">Neural Command Initialized</h1>
+                <p className="text-[var(--text-muted)] text-sm max-w-sm leading-relaxed font-medium">ArrowIntelligence is ready. Engage in high-level reasoning, code synthesis, or real-time voice interaction.</p>
+                <div className="flex gap-3 mt-10">
+                  <button onClick={() => startLiveSession('voice')} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">Start Voice Stream</button>
+                  <button onClick={() => setInput("Implement a high-performance search algorithm in Rust.")} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">Coding Challenge</button>
                 </div>
               </div>
-            ) : activeSession.messages.map(m => (
-              <div key={m.id} className={`message-enter flex gap-5 mb-12 ${m.role === 'user' ? 'justify-end' : ''}`}>
-                {m.role === 'assistant' && <div className="ai-avatar mt-1"><Icons.Logo /></div>}
-                <div className={`max-w-[85%] group relative ${m.role === 'user' ? 'bg-[var(--user-msg-bg)] px-6 py-4 rounded-2xl border border-[var(--border-color)]' : 'flex-1'}`}>
-                  <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed font-medium">
-                    <ReactMarkdown components={{ code: CodeBlock as any }}>{m.content}</ReactMarkdown>
-                    {m.isTyping && !m.content && <div className="flex gap-1.5 items-center mt-3 h-4"><div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div><div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div></div>}
-                  </div>
-                  {m.images?.map((img, idx) => <img key={idx} src={img} className="generated-media" />)}
-                  {m.videos?.map((vid, idx) => <video key={idx} src={vid} controls className="generated-media w-full aspect-video shadow-2xl" />)}
-                  {m.role === 'assistant' && !m.isTyping && (
-                    <div className="mt-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleCopy(m.content)} className="p-1.5 hover:bg-[var(--user-msg-bg)] rounded-md text-[var(--text-muted)] flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-[var(--border-color)] transition-all"><Icons.Copy /> Copy</button>
-                    </div>
+            ) : (
+              activeSession.messages.map((m: any) => (
+                <div key={m.id} className={`flex gap-6 ${m.role === 'user' ? 'justify-end' : ''} animate-in slide-in-from-bottom-2 fade-in duration-500`}>
+                  {m.role === 'assistant' && (
+                    <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center flex-shrink-0 mt-1 border border-[var(--primary)]/20 shadow-lg shadow-[var(--primary)]/5"><Icons.Logo /></div>
                   )}
+                  <div className={`relative ${m.role === 'user' ? 'message-user' : 'message-ai flex-1'}`}>
+                    <div className="prose prose-invert prose-emerald max-w-none text-sm leading-relaxed">
+                      <ReactMarkdown 
+                        components={{
+                          code({ node, inline, className, children, ...props }: any) {
+                            return !inline ? (
+                              <EnhancedCodeBlock>{String(children)}</EnhancedCodeBlock>
+                            ) : (
+                              <code className="bg-white/10 px-1.5 py-0.5 rounded-md text-[var(--primary)] font-black text-[0.85rem]" {...props}>
+                                {children}
+                              </code>
+                            );
+                          }
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                      {m.sources && m.sources.length > 0 && (
+                        <div className="mt-6 flex flex-wrap gap-2 pt-4 border-t border-white/5">
+                          {m.sources.map((s: any, i: number) => (
+                            <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] rounded-xl text-[10px] font-bold hover:bg-white/[0.08] transition-all border border-white/5 text-[var(--text-muted)] hover:text-white hover:border-white/10">
+                              <Icons.Globe /> {s.title || "Signal Found"}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {m.isTyping && !m.content && (
+                        <div className="flex gap-1.5 mt-3">
+                          <div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce"></div>
+                          <div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                          <div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-            <div ref={scrollRef} />
+              ))
+            )}
+            <div ref={scrollRef} className="h-8" />
           </div>
         </div>
 
-        <div className="pb-8 px-6 flex-shrink-0">
-          <div className="input-wrapper">
-            {attachedImage && (
-              <div className="px-6 pt-4 flex items-center">
-                <div className="relative group">
-                  <img src={attachedImage.preview} className="w-14 h-14 rounded-xl object-cover border border-[var(--border-color)]" />
-                  <button onClick={() => setAttachedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><Icons.Trash width="12" height="12" /></button>
+        {/* Markdown Preview Overlay - Side-by-Side Polish */}
+        {isPreviewOpen && input.trim() && (
+          <div className="absolute bottom-[110px] left-1/2 -translate-x-1/2 w-full max-w-4xl px-8 z-20 animate-in slide-in-from-bottom-4 fade-in duration-300">
+            <div className="glass-effect rounded-[2rem] p-8 border border-[var(--primary)]/30 shadow-[0_30px_60px_rgba(0,0,0,0.6)] overflow-y-auto max-h-[45vh] bg-[#0d0d0f]/90">
+              <div className="flex items-center justify-between mb-6 pb-3 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse shadow-[0_0_8px_var(--primary)]" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--primary)]">Neural Visualization Engine</span>
                 </div>
+                <button onClick={() => setIsPreviewOpen(false)} className="text-white/20 hover:text-white transition-all"><Icons.X /></button>
               </div>
-            )}
-            <div className="flex items-center gap-2 p-3.5 px-5">
-              <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Icons.Image /></button>
-              <textarea rows={1} value={input} onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleAction())} placeholder="Message ArrowIntelligence..." className="flex-1 bg-transparent border-none outline-none resize-none py-2 text-[15px] max-h-60 font-medium text-[var(--text-main)] scrollbar-hide" />
-              <div className="flex items-center gap-1.5">
-                <button onClick={handleSpeechRecognition} className={`p-3 rounded-xl transition-all ${isVoiceChat ? 'bg-red-500/20 text-red-500 animate-pulse' : 'text-[var(--text-muted)] hover:text-[var(--accent)]'}`}><Icons.Mic /></button>
-                <button onClick={() => handleAction()} disabled={(!input.trim() && !attachedImage) || isTyping} className="p-3 bg-[var(--text-main)] text-[var(--chat-bg)] rounded-xl disabled:opacity-20 hover:scale-[1.03] active:scale-[0.97] transition-all shadow-lg"><Icons.Send /></button>
+              <div className="prose prose-invert prose-emerald text-sm">
+                <ReactMarkdown>{input}</ReactMarkdown>
               </div>
-              <input type="file" ref={fileInputRef} onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = () => setAttachedImage({ data: (reader.result as string).split(',')[1], mimeType: file.type, preview: reader.result as string });
-                  reader.readAsDataURL(file);
-                }
-              }} accept="image/*" className="hidden" />
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Input Dock */}
+        <div className="p-8 pt-2">
+          <div className="max-w-3xl mx-auto">
+            <div className="input-dock flex items-end px-4 py-3 gap-1">
+              <div className="flex flex-col gap-1 mb-1.5">
+                 <button 
+                  onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+                  className={`p-3 rounded-xl transition-all group relative ${isPreviewOpen ? 'text-[var(--primary)] bg-[var(--primary)]/10' : 'text-white/20 hover:text-white/60 hover:bg-white/5'}`}
+                >
+                  <Icons.Eye />
+                  <span className="tooltip">{isPreviewOpen ? "Close Preview" : "Neural Preview"}</span>
+                </button>
+              </div>
+              <textarea 
+                rows={1}
+                value={input}
+                onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 220) + 'px'; }}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                placeholder="Initialize signal input..."
+                className="flex-1 bg-transparent border-none outline-none resize-none px-4 py-2.5 text-[15px] placeholder:text-white/10 font-medium leading-relaxed"
+              />
+              <button 
+                onClick={handleSend}
+                disabled={!input.trim() || isTyping}
+                className={`p-3.5 rounded-2xl transition-all active:scale-90 mb-0.5 ${input.trim() ? 'bg-[var(--primary)] text-white shadow-xl shadow-[var(--primary)]/20' : 'bg-white/5 text-white/10 cursor-not-allowed'}`}
+              >
+                <Icons.Send />
+              </button>
+            </div>
+            <div className="mt-5 flex justify-center gap-10 text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)] opacity-30 select-none">
+              <span className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-green-500" /> Secure Node</span>
+              <span>Gemini Pro Native</span>
+              <span>v3.4.0 Engine</span>
             </div>
           </div>
         </div>
-
-        {isVideoCall && <NeuralCallView neuralMemory={neuralMemory} voiceName={voiceName} voiceRate={voiceRate} onClose={() => setIsVideoCall(false)} />}
       </main>
     </div>
   );
 };
 
-const container = document.getElementById('root');
-if (container) createRoot(container).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+root.render(<App />);
