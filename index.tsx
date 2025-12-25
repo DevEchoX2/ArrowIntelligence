@@ -5,39 +5,48 @@ import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import { geminiService } from './backend';
 
+// --- Type definitions for AI Studio global ---
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    // Add optional modifier to prevent "identical modifiers" conflict with host environment types
+    aistudio?: AIStudio;
+    webkitAudioContext: typeof AudioContext;
+  }
+}
+
 // --- Icons ---
 const Icons = {
-  Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>,
+  Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>,
   Sidebar: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>,
-  Send: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>,
-  Logo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
+  Send: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>,
+  Logo: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
   Phone: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
-  Video: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>,
-  X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>,
-  Mic: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>,
-  MicOff: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
-  Globe: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
-  Search: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
-  Eye: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
-  Copy: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
-  Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>,
-  Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  Sun: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,
+  Moon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
+  Image: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>,
+  Sparkles: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3 1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"/></svg>,
+  X: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>,
+  Copy: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+  Check: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>,
+  Camera: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
 };
 
-// --- Raw Audio Utils ---
+// --- Helpers ---
 function encode(bytes: Uint8Array) {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
-
 function decode(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 }
-
 async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
@@ -49,535 +58,450 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
   return buffer;
 }
 
-// --- Component: Syntax Highlighted Code ---
-const EnhancedCodeBlock = ({ children }: { children: string }) => {
-  const code = children.trim();
-  const lines = code.split('\n');
-  const [copied, setCopied] = useState(false);
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.readAsDataURL(blob);
+  });
+};
 
-  const copyToClipboard = () => {
+// --- Highlighting Engine ---
+const highlightCode = (code: string) => {
+  return code
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/(\/\/.*)/g, '<span class="token-comment">$1</span>')
+    .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="token-string">$1</span>')
+    .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|class|extends|await|async|try|catch|new|this|throw|break|continue|case|switch|default|delete|in|of|void|yield|do|null|undefined|true|false)\b/g, '<span class="token-keyword">$1</span>')
+    .replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
+    .replace(/\b([a-zA-Z_]\w*)(?=\s*\()/g, '<span class="token-function">$1</span>')
+    .replace(/(\+\+|--|===|!==|==|!=|>=|<=|=>|&&|\|\||[+\-*/%&|^!~=<>])/g, '<span class="token-operator">$1</span>');
+};
+
+const CodeBlock = ({ className, children }: { className?: string, children?: any }) => {
+  const [copied, setCopied] = useState(false);
+  const code = String(children || '').replace(/\n$/, '');
+  const language = className ? className.replace(/language-/, '') : '';
+  
+  const copy = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const highlightedCode = useMemo(() => {
-    return code
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/(\/\/.*)/g, '<span class="token-comment">$1</span>')
-      .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="token-string">$1</span>')
-      .replace(/('(?:[^'\\]|\\.)*')/g, '<span class="token-string">$1</span>')
-      .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|class|extends|await|async|try|catch|new|this|throw|break|continue|case|switch|default|delete|in|of|void|yield|do)\b/g, '<span class="token-keyword">$1</span>')
-      .replace(/\b(string|number|boolean|any|void|null|undefined|Array|Promise|Record|Partial|Omit|Pick|unknown|never|object|symbol)\b/g, '<span class="token-type">$1</span>')
-      .replace(/\b(true|false)\b/g, '<span class="token-boolean">$1</span>')
-      .replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
-      .replace(/\b([a-zA-Z_]\w*)(?=\s*\()/g, '<span class="token-function">$1</span>')
-      .replace(/(\+\+|--|===|!==|==|!=|>=|<=|=>|&&|\|\||[+\-*/%&|^!~=<>])/g, '<span class="token-operator">$1</span>')
-      .replace(/([\[\]{}()])/g, '<span class="token-bracket">$1</span>');
-  }, [code]);
-
   return (
-    <div className="relative group/code">
-      <div className="absolute top-3 right-3 flex items-center gap-2 opacity-0 group-hover/code:opacity-100 transition-all duration-300">
+    <div className="my-6 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--code-bg)] group/code">
+      <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-[var(--border)]">
+        <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+          {language || 'code'}
+        </span>
         <button 
-          onClick={copyToClipboard}
-          className="flex items-center gap-2 px-3 py-1.5 glass-effect text-[10px] font-bold rounded-lg border border-white/10 hover:border-[var(--primary)] transition-all"
+          onClick={copy} 
+          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest hover:text-[var(--primary)] transition-colors"
         >
-          {copied ? <Icons.Check /> : <Icons.Copy />}
-          {copied ? "Synced" : "Copy Code"}
+          {copied ? <><Icons.Check /> COPIED!</> : <><Icons.Copy /> COPY CODE</>}
         </button>
       </div>
-      <div className="code-container">
-        <div className="line-numbers">
-          {lines.map((_, i) => (
-            <span key={i} className="line-number" />
-          ))}
-        </div>
-        <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
-      </div>
+      <pre className="m-0 border-none rounded-none bg-transparent">
+        <code dangerouslySetInnerHTML={{ __html: highlightCode(code) }} />
+      </pre>
     </div>
   );
 };
 
 const App = () => {
-  const [sessions, setSessions] = useState<any[]>(() => JSON.parse(localStorage.getItem('arrow_sessions_minimal') || '[]'));
+  const [sessions, setSessions] = useState<any[]>(() => JSON.parse(localStorage.getItem('arrow_v8_sessions') || '[]'));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isTyping, setIsTyping] = useState(false);
-  const [callMode, setCallMode] = useState<'none' | 'voice' | 'video'>('none');
-  const [botPfp, setBotPfp] = useState<string>(localStorage.getItem('arrow_bot_pfp_minimal') || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3Z0NGZwaHpsN3ZidGxyMmZzdnB6bnB6bnB6bnB6bnB6bnB6bnB6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/l41lTfuxV5K15y7du/giphy.gif');
-  const [pfpType, setPfpType] = useState<'image' | 'video'>(localStorage.getItem('arrow_bot_pfp_type_minimal') as any || 'image');
-  const [isMicActive, setIsMicActive] = useState(false);
+  const [callMode, setCallMode] = useState<'none' | 'voice'>('none');
+  const [voiceName, setVoiceName] = useState(localStorage.getItem('arrow_v8_voice') || 'Zephyr');
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
-  
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [voiceSettings, setVoiceSettings] = useState({
-    voiceName: localStorage.getItem('arrow_voice_name') || 'Puck',
-    speakingRate: parseFloat(localStorage.getItem('arrow_speaking_rate') || '1.0'),
-  });
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isCamEnabled, setIsCamEnabled] = useState(false);
+  const [driftTangents, setDriftTangents] = useState<string[]>([]);
+  const [userPfp, setUserPfp] = useState(localStorage.getItem('arrow_v8_user_pfp') || 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Operator');
+  const [botPfp, setBotPfp] = useState(localStorage.getItem('arrow_v8_bot_pfp') || 'https://api.dicebear.com/7.x/bottts-neutral/svg?seed=Arrow');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sessionPromiseRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const videoStreamRef = useRef<MediaStream | null>(null);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef<number>(0);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const frameIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('arrow_sessions_minimal', JSON.stringify(sessions));
-  }, [sessions]);
+    localStorage.setItem('arrow_v8_sessions', JSON.stringify(sessions));
+    if (activeId && !isTyping) {
+      const active = sessions.find(s => s.id === activeId);
+      if (active && active.messages.length > 0) {
+        const lastFew = active.messages.slice(-3).map((m: any) => m.content).join(" ");
+        geminiService.generateDrift(lastFew).then(setDriftTangents);
+      }
+    }
+  }, [sessions, activeId, isTyping]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [sessions]);
+  useEffect(() => { document.body.className = isDarkMode ? 'dark' : 'light'; }, [isDarkMode]);
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [sessions]);
 
-  const filteredSessions = useMemo(() => {
-    if (!searchTerm) return sessions;
-    const term = searchTerm.toLowerCase();
-    return sessions.filter(s => 
-      s.title?.toLowerCase().includes(term) || 
-      s.messages.some((m: any) => m.content.toLowerCase().includes(term))
-    );
-  }, [sessions, searchTerm]);
+  const handleSend = async (forcedText?: string, type: 'text' | 'image' | 'video' = 'text') => {
+    const text = forcedText || input;
+    if (!text.trim() || isTyping) return;
+    
+    if (type === 'video') {
+      const hasKey = await window.aistudio?.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio?.openSelectKey();
+      }
+    }
 
-  const startLiveSession = async (mode: 'voice' | 'video') => {
+    const sid = activeId || Date.now().toString();
+    const userMsg = { role: 'user', content: text, id: Date.now(), type };
+    const aiMsg = { role: 'assistant', content: '', id: Date.now() + 1, isTyping: true, type };
+
+    if (!activeId) {
+      setSessions([{ id: sid, title: text.slice(0, 35), messages: [userMsg, aiMsg] }, ...sessions]);
+      setActiveId(sid);
+    } else {
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: [...s.messages, userMsg, aiMsg] } : s));
+    }
+
+    setInput('');
+    setIsTyping(true);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === 'video' });
-      videoStreamRef.current = stream;
-      
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      const inputContext = new AudioContext({ sampleRate: 16000 });
+      if (type === 'image') {
+        const url = await geminiService.generateImage(text);
+        setSessions(prev => prev.map(s => s.id === sid ? {
+          ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: 'Neural image synthesized.', imageUrl: url, isTyping: false } : m)
+        } : s));
+      } else if (type === 'video') {
+        const url = await geminiService.generateVideo(text);
+        setSessions(prev => prev.map(s => s.id === sid ? {
+          ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: 'Temporal stream generated with Veo 3.1.', videoUrl: url, isTyping: false } : m)
+        } : s));
+      } else {
+        const active = sessions.find(s => s.id === sid);
+        const history = (active?.messages || []).map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+        const stream = geminiService.streamChat('gemini-3-flash-preview', text, history);
+        let full = '';
+        for await (const chunk of stream) {
+          full += (chunk as any).text || '';
+          setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: full } : m) } : s));
+        }
+        setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, isTyping: false } : m) } : s));
+      }
+    } catch (e: any) {
+      if (e.message && e.message.includes("Requested entity was not found.")) {
+        await window.aistudio?.openSelectKey();
+      }
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: `**Signal Fault:** ${e.message}`, isTyping: false } : m) } : s));
+    } finally { setIsTyping(false); }
+  };
 
+  const startCall = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isCamEnabled });
+      // Correct AudioContext initialization following guidelines
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+      const inputCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+      nextStartTimeRef.current = 0;
+      
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
           onopen: () => {
-            const source = inputContext.createMediaStreamSource(stream);
-            const scriptProcessor = inputContext.createScriptProcessor(4096, 1, 1);
-            scriptProcessor.onaudioprocess = (e) => {
+            const audioSource = inputCtx.createMediaStreamSource(mediaStream);
+            const scriptNode = inputCtx.createScriptProcessor(4096, 1, 1);
+            scriptNode.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const int16 = new Int16Array(inputData.length);
               for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-              sessionPromise.then(s => s.sendRealtimeInput({ 
-                media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } 
-              })).catch(err => console.error("Realtime input error:", err));
+              sessionPromise.then(s => s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } }));
             };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputContext.destination);
-            setIsMicActive(true);
+            audioSource.connect(scriptNode);
+            scriptNode.connect(inputCtx.destination);
+
+            if (isCamEnabled && localVideoRef.current) {
+              localVideoRef.current.srcObject = mediaStream;
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              frameIntervalRef.current = window.setInterval(() => {
+                if (localVideoRef.current && ctx) {
+                  const vw = localVideoRef.current.videoWidth;
+                  const vh = localVideoRef.current.videoHeight;
+                  if (vw && vh) {
+                    canvas.width = vw;
+                    canvas.height = vh;
+                    ctx.drawImage(localVideoRef.current, 0, 0, vw, vh);
+                    canvas.toBlob(async (blob) => {
+                      if (blob) {
+                        const base64Data = await blobToBase64(blob);
+                        sessionPromise.then(s => s.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } }));
+                      }
+                    }, 'image/jpeg', 0.5); // Adaptive quality
+                  }
+                }
+              }, 500); // ~2 FPS is stable for multi-modal context
+            }
+
+            setCallMode('voice');
           },
           onmessage: async (msg: LiveServerMessage) => {
-            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData && audioContextRef.current) {
+            const data = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (data && audioContextRef.current) {
               setIsAiSpeaking(true);
-              const buffer = await decodeAudioData(decode(audioData), audioContextRef.current, 24000, 1);
+              const buffer = await decodeAudioData(decode(data), audioContextRef.current, 24000, 1);
               const source = audioContextRef.current.createBufferSource();
               source.buffer = buffer;
               source.connect(audioContextRef.current.destination);
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, audioContextRef.current.currentTime);
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += buffer.duration;
+              
+              const now = audioContextRef.current.currentTime;
+              const playTime = Math.max(now, nextStartTimeRef.current);
+              
+              source.start(playTime);
+              nextStartTimeRef.current = playTime + buffer.duration;
               sourcesRef.current.add(source);
+              
               source.onended = () => {
                 sourcesRef.current.delete(source);
                 if (sourcesRef.current.size === 0) setIsAiSpeaking(false);
               };
             }
             if (msg.serverContent?.interrupted) {
-              sourcesRef.current.forEach(s => s.stop());
+              sourcesRef.current.forEach(s => { try { s.stop(); } catch(e){} });
               sourcesRef.current.clear();
-              setIsAiSpeaking(false);
               nextStartTimeRef.current = 0;
+              setIsAiSpeaking(false);
             }
           },
-          onerror: (e) => {
-            console.error('Signal Error:', e);
-            alert("Connection error. If using a proxy, ensure WebSocket connections are allowed.");
-          },
-          onclose: () => {
-            setCallMode('none');
-            setIsMicActive(false);
-            setIsAiSpeaking(false);
+          onclose: () => { 
+            if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+            setCallMode('none'); 
+            setIsAiSpeaking(false); 
           }
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { 
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceSettings.voiceName as any } } 
-          },
-          systemInstruction: `You are ArrowIntelligence. You are on a live call. Be brief and highly professional.`
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName as any } } },
+          systemInstruction: "You are ArrowIntelligence. You can see through my camera if it's on. Be conversational, direct, and brief. Created by devvyE_yo."
         }
       });
       sessionPromiseRef.current = sessionPromise;
-      setCallMode(mode);
-    } catch (err) {
-      console.error(err);
-      alert("Neural Feed offline. Verify camera/mic and proxy settings.");
+    } catch (e) { 
+      console.error(e);
+      alert("Neural stream access denied or failed."); 
     }
   };
 
   const endCall = () => {
     sessionPromiseRef.current?.then((s: any) => s.close());
-    videoStreamRef.current?.getTracks().forEach(t => t.stop());
+    if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
     setCallMode('none');
-    setIsMicActive(false);
-    setIsAiSpeaking(false);
-    nextStartTimeRef.current = 0;
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
-    const userMsg = { role: 'user', content: input, id: Date.now() };
-    const aiMsg = { role: 'assistant', content: '', id: Date.now() + 1, isTyping: true, sources: [] };
-    
-    let sid = activeId;
-    if (!sid) {
-      sid = Date.now().toString();
-      const newSess = { id: sid, title: input.slice(0, 32), messages: [userMsg, aiMsg], timestamp: Date.now() };
-      setSessions([newSess, ...sessions]);
-      setActiveId(sid);
-    } else {
-      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: [...s.messages, userMsg, aiMsg] } : s));
-    }
-
-    const currentInput = input;
-    setInput('');
-    setIsTyping(true);
-    setIsPreviewOpen(false);
-
-    try {
-      const activeSessionData = sessions.find(s => s.id === (sid || ""));
-      const history = (activeSessionData?.messages || []).map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
-      
-      const stream = geminiService.streamChat('gemini-3-flash-preview', currentInput, history, [{ googleSearch: {} }]);
-      let full = '';
-      let currentSources: any[] = [];
-
-      for await (const chunk of stream) {
-        const text = (chunk as any).text || '';
-        full += text;
-        
-        const chunks = (chunk as any).candidates?.[0]?.groundingMetadata?.groundingChunks;
-        if (chunks) {
-           const newSources = chunks.filter((c: any) => c.web).map((c: any) => c.web);
-           currentSources = [...new Set([...currentSources, ...newSources])];
-        }
-
-        setSessions(prev => prev.map(s => s.id === sid ? {
-          ...s,
-          messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: full, sources: currentSources } : m)
-        } : s));
-      }
-      setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, isTyping: false } : m) } : s));
-    } catch (e: any) {
-      console.error("Neural Signal Error:", e);
-      const errorMsg = e.message || "Unknown Connection Error";
-      setSessions(prev => prev.map(s => s.id === sid ? { 
-        ...s, 
-        messages: s.messages.map(m => m.id === aiMsg.id ? { 
-          ...m, 
-          content: `**Neural Link Failure.**\n\nReason: \`${errorMsg}\`\n\n*If you are using a proxy, please ensure 'generativelanguage.googleapis.com' is whitelisted for both HTTPS and WebSockets.*`, 
-          isTyping: false 
-        } : m) 
-      } : s));
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  const handlePfpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      const type = file.type.startsWith('video') ? 'video' : 'image';
-      setBotPfp(url);
-      setPfpType(type);
-      localStorage.setItem('arrow_bot_pfp_minimal', url);
-      localStorage.setItem('arrow_bot_pfp_type_minimal', type);
-    }
-  };
-
-  const updateVoiceSetting = (key: string, val: any) => {
-    const newSettings = { ...voiceSettings, [key]: val };
-    setVoiceSettings(newSettings);
-    localStorage.setItem(`arrow_${key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)}`, val.toString());
   };
 
   const activeSession = sessions.find(s => s.id === activeId);
 
   return (
-    <div className="flex h-screen w-full bg-[var(--bg-dark)] text-[var(--text-main)] overflow-hidden selection:bg-[var(--primary)] selection:text-white">
-      {/* Settings Modal */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="glass-effect w-full max-w-sm rounded-[2rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 p-8">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex flex-col">
-                <h3 className="text-xl font-black tracking-tight">Audio Parameters</h3>
-                <span className="text-[10px] text-[var(--primary)] font-bold tracking-[0.2em] uppercase mt-0.5">Core Voice Processor</span>
-              </div>
-              <button onClick={() => setShowSettingsModal(false)} className="p-2 hover:bg-white/5 rounded-full transition-all"><Icons.X /></button>
+    <div className="flex w-full h-full relative">
+      {/* Sidebar */}
+      <aside className={`sidebar-transition fixed md:relative z-40 bg-[var(--bg-sidebar)] border-r border-[var(--border)] h-full flex flex-col ${sidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden'}`}>
+        <div className="p-4 flex flex-col h-full w-72">
+          <button onClick={() => { setActiveId(null); setInput(''); }} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border)] hover:bg-[var(--bg-main)] transition-all font-bold text-sm mb-6 active:scale-95">
+            <Icons.Plus /> New Neural Signal
+          </button>
+          
+          <div className="flex-1 overflow-y-auto custom-scroll space-y-1">
+            <p className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest px-3 mb-3">Memory Registry</p>
+            {sessions.map(s => (
+              <button key={s.id} onClick={() => setActiveId(s.id)} className={`w-full p-3 rounded-xl text-left text-sm truncate transition-all ${activeId === s.id ? 'bg-[var(--bg-main)] text-[var(--primary)] font-bold' : 'hover:bg-[var(--bg-main)] text-[var(--text-muted)]'}`}>
+                {s.title || 'Untitled Stream'}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-auto pt-4 border-t border-[var(--border)] flex flex-col gap-3">
+             <div className="flex items-center gap-3">
+                <img 
+                  src={userPfp} 
+                  title="Change User PFP"
+                  onClick={() => { const u = prompt('User Avatar URL:'); if(u) { setUserPfp(u); localStorage.setItem('arrow_v8_user_pfp',u); } }} 
+                  className="w-10 h-10 rounded-full border border-[var(--border)] cursor-pointer hover:ring-2 ring-[var(--primary)] transition-all" 
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold truncate">Operator</p>
+                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="text-[10px] font-black uppercase text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors">
+                    {isDarkMode ? 'SWITCH LIGHT' : 'SWITCH DARK'}
+                  </button>
+                </div>
+                <div className="p-2 text-[var(--text-muted)]">
+                   {isDarkMode ? <Icons.Moon /> : <Icons.Sun />}
+                </div>
+             </div>
+             <p className="text-[10px] text-[var(--text-muted)] px-1 font-bold">CREATED BY <span className="text-[var(--primary)]">devvyE_yo</span></p>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Container */}
+      <main className="flex-1 flex flex-col bg-[var(--bg-main)] relative min-w-0">
+        <header className="h-16 flex items-center justify-between px-6 border-b border-[var(--border)] z-20">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"><Icons.Sidebar /></button>
+            <div className="flex items-center gap-2 font-black text-sm uppercase tracking-widest text-[var(--text-muted)] select-none">
+               <Icons.Logo /> <span className="hidden sm:inline">ArrowIntelligence</span>
             </div>
-            
-            <div className="space-y-8">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] block mb-4">Neural Persona</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { name: 'Puck', label: 'Masculine', desc: 'Authoritative' },
-                    { name: 'Kore', label: 'Feminine', desc: 'Professional' },
-                    { name: 'Zephyr', label: 'Fluid', desc: 'Neutral' },
-                    { name: 'Charon', label: 'Deep', desc: 'Resonant' }
-                  ].map(v => (
-                    <button 
-                      key={v.name}
-                      onClick={() => updateVoiceSetting('voiceName', v.name)}
-                      className={`p-4 rounded-2xl border transition-all text-left group ${voiceSettings.voiceName === v.name ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-white' : 'border-white/5 bg-white/[0.02] hover:border-white/20'}`}
-                    >
-                      <div className={`text-xs font-black ${voiceSettings.voiceName === v.name ? 'text-[var(--primary)]' : 'text-white'}`}>{v.label}</div>
-                      <div className="text-[9px] text-[var(--text-muted)] mt-1 font-bold">{v.desc}</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsCamEnabled(!isCamEnabled)} 
+              className={`p-2 transition-colors rounded-lg flex items-center gap-2 ${isCamEnabled ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--text-muted)] hover:bg-white/5'}`}
+              title="Toggle Camera for Live Call"
+            >
+              <Icons.Camera />
+              <span className="text-[10px] font-black uppercase hidden sm:inline">{isCamEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+            <select value={voiceName} onChange={(e) => { setVoiceName(e.target.value); localStorage.setItem('arrow_v8_voice', e.target.value); }} className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none border border-[var(--border)] rounded-lg px-2 py-1 cursor-pointer">
+               {['Zephyr','Puck','Kore','Fenrir','Charon'].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <button onClick={startCall} className="p-2 hover:text-[var(--primary)] transition-colors" title="Voice & Vision Stream"><Icons.Phone /></button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto custom-scroll px-4">
+          <div className="max-w-3xl mx-auto py-12 space-y-10">
+            {(!activeSession || activeSession.messages.length === 0) ? (
+              <div className="flex flex-col items-center justify-center pt-24 text-center space-y-8 animate-in fade-in duration-700">
+                <div className="w-20 h-20 rounded-[2.5rem] bg-[var(--primary)] flex items-center justify-center shadow-2xl shadow-[var(--primary-glow)]"><Icons.Logo /></div>
+                <div className="space-y-2">
+                  <h1 className="text-4xl font-black tracking-tight">How can I assist?</h1>
+                  <p className="text-sm text-[var(--text-muted)] max-w-sm font-medium">Neural engine online. Engage in code synthesis, media generation, or real-time voice & video streaming.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  {["Analyze this React code", "Synth cinematic video clip", "Quantum theory breakdown", "Logical reasoning test"].map(p => (
+                    <button key={p} onClick={() => setInput(p)} className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] text-xs text-left hover:border-[var(--primary)] transition-all font-bold group">
+                      {p} <span className="opacity-0 group-hover:opacity-100 transition-opacity ml-1">&rarr;</span>
                     </button>
                   ))}
                 </div>
               </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Speaking Velocity</label>
-                   <span className="text-[10px] font-black text-[var(--primary)]">{voiceSettings.speakingRate.toFixed(1)}x</span>
-                </div>
-                <input 
-                  type="range" min="0.5" max="2.0" step="0.1" 
-                  value={voiceSettings.speakingRate}
-                  onChange={(e) => updateVoiceSetting('speakingRate', parseFloat(e.target.value))}
-                  className="w-full accent-[var(--primary)] h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer"
-                />
-              </div>
-            </div>
-
-            <button 
-              onClick={() => setShowSettingsModal(false)}
-              className="w-full mt-10 py-4 rounded-2xl bg-[var(--primary)] text-white font-black text-xs uppercase tracking-widest active:scale-95 transition-all"
-            >
-              Initialize Changes
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Call UI */}
-      {callMode !== 'none' && (
-        <div className="fixed inset-0 z-50 glass-effect flex flex-col items-center justify-center animate-in fade-in duration-300">
-          <div className="absolute top-10 left-10 flex items-center gap-4">
-            <div className="w-10 h-10 bg-[var(--primary)] rounded-xl flex items-center justify-center shadow-lg"><Icons.Logo /></div>
-            <div className="flex flex-col">
-              <span className="font-black text-sm uppercase tracking-widest">Neural Stream</span>
-              <span className="text-[10px] text-[var(--primary)] font-bold tracking-[0.2em] uppercase">E2EE Linked</span>
-            </div>
-          </div>
-          
-          <div className="relative group">
-            <div className="avatar-ring">
-              <div className="avatar-inner">
-                {pfpType === 'video' ? (
-                  <video src={botPfp} autoPlay loop muted playsInline className="w-full h-full object-cover" />
-                ) : (
-                  <img src={botPfp} className="w-full h-full object-cover" alt="AI Avatar" />
-                )}
-              </div>
-            </div>
-            {isAiSpeaking && <div className="absolute -inset-8 border-2 border-[var(--primary)] rounded-full animate-ping opacity-10" />}
-            
-            <label className="absolute inset-0 z-10 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur-md">
-              <Icons.Plus />
-              <input type="file" className="hidden" accept="image/*,video/*,.gif" onChange={handlePfpChange} />
-            </label>
-          </div>
-
-          <div className="mt-12 text-center">
-            <h2 className="text-2xl font-black tracking-tight">ArrowIntelligence</h2>
-            <p className="text-[var(--text-muted)] text-[10px] font-black uppercase tracking-widest mt-2">{isAiSpeaking ? 'Signal Transmitting' : 'Waiting for Input'}</p>
-          </div>
-
-          <div className="mt-16 flex gap-6 items-center">
-            <button onClick={() => setShowSettingsModal(true)} className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/5 border border-white/10 hover:border-white/30"><Icons.Settings /></button>
-            <button onClick={() => setIsMicActive(!isMicActive)} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isMicActive ? 'bg-white/5' : 'bg-red-500/10 text-red-500'}`}>
-              {isMicActive ? <Icons.Mic /> : <Icons.MicOff />}
-            </button>
-            <button onClick={endCall} className="w-20 h-20 bg-red-600 rounded-3xl flex items-center justify-center shadow-2xl hover:scale-110 transition-all">
-              <Icons.X />
-            </button>
-          </div>
-          
-          {callMode === 'video' && (
-            <div className="absolute bottom-10 right-10 w-52 h-32 rounded-2xl overflow-hidden border border-white/10 bg-black">
-              <video autoPlay muted ref={el => { if (el) el.srcObject = videoStreamRef.current; }} className="w-full h-full object-cover grayscale scale-x-[-1]" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sidebar */}
-      <aside className={`sidebar-transition ${sidebarOpen ? 'w-64' : 'w-0'} bg-[var(--bg-card)] border-r border-[var(--border)] flex flex-col overflow-hidden`}>
-        <div className="p-6 flex flex-col gap-5 flex-shrink-0">
-          <div className="flex gap-2">
-            <button onClick={() => { setActiveId(null); setInput(''); }} className="flex-1 flex items-center justify-center gap-2 bg-[var(--primary)] hover:opacity-90 active:scale-95 transition-all py-3 rounded-xl font-black text-[11px] uppercase tracking-widest text-white shadow-xl shadow-[var(--primary)]/10">
-              <Icons.Plus /> New Thread
-            </button>
-            <button onClick={() => setSidebarOpen(false)} className="p-3 hover:bg-white/5 rounded-xl transition-all"><Icons.Sidebar /></button>
-          </div>
-          <div className="relative group">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[var(--primary)]">
-              <Icons.Search />
-            </div>
-            <input 
-              type="text" 
-              placeholder="Search history..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input w-full pl-10 pr-4 py-2.5 text-xs outline-none font-medium"
-            />
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto px-3 scrollbar-hide py-2 space-y-1">
-          <div className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] px-5 py-3 opacity-60">Neural Timeline</div>
-          {filteredSessions.map((s: any) => (
-            <button 
-              key={s.id} onClick={() => setActiveId(s.id)} 
-              className={`w-full p-3.5 rounded-xl mb-1 cursor-pointer transition-all flex items-center gap-3 border text-left group ${activeId === s.id ? 'bg-white/[0.04] border-white/10' : 'hover:bg-white/[0.02] border-transparent'}`}
-            >
-              <div className={`w-1.5 h-1.5 rounded-full ${activeId === s.id ? 'bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]' : 'bg-white/10'}`} />
-              <span className={`flex-1 truncate text-xs font-bold ${activeId === s.id ? 'text-white' : 'text-white/40'}`}>{s.title || "Untitled Fragment"}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="p-5 border-t border-[var(--border)] flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0 border border-white/5"><Icons.Logo /></div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)]">Prime v3.4</p>
-              <p className="text-[9px] text-[var(--text-muted)] truncate font-bold">Encrypted Active</p>
-            </div>
-          </div>
-          <button onClick={() => setShowSettingsModal(true)} className="p-2 text-white/20 hover:text-white transition-colors"><Icons.Settings /></button>
-        </div>
-      </aside>
-
-      {/* Main Chat Space */}
-      <main className="flex-1 flex flex-col relative">
-        <header className="h-16 flex items-center justify-between px-8 border-b border-[var(--border)] bg-[var(--bg-dark)]/50 backdrop-blur-md z-10">
-          <div className="flex items-center gap-6">
-            {!sidebarOpen && <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-xl transition-all"><Icons.Sidebar /></button>}
-            <div className="flex items-center gap-3 font-black text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-              <span className="text-[var(--primary)]"><Icons.Logo /></span>
-              ArrowIntelligence
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-             <button onClick={() => startLiveSession('voice')} className="p-2 text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"><Icons.Phone /></button>
-             <button onClick={() => startLiveSession('video')} className="p-2 text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"><Icons.Video /></button>
-             <button onClick={() => setShowSettingsModal(true)} className="p-2.5 text-[var(--text-muted)] hover:text-white transition-all"><Icons.Settings /></button>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-6 scrollbar-hide bg-gradient-to-b from-[var(--bg-dark)] to-black">
-          <div className="max-w-3xl mx-auto py-16 space-y-12">
-            {(!activeSession || activeSession.messages.length === 0) ? (
-              <div className="flex flex-col items-center justify-center pt-24 text-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-[#0c8a6a] text-white rounded-[2rem] flex items-center justify-center mb-8 shadow-2xl rotate-12"><Icons.Logo /></div>
-                <h1 className="text-3xl font-black mb-3 tracking-tighter">Neural Command Initialized</h1>
-                <p className="text-[var(--text-muted)] text-sm max-w-sm font-medium">ArrowIntelligence is ready. Engage in high-level reasoning or real-time voice interaction.</p>
-              </div>
             ) : (
               activeSession.messages.map((m: any) => (
-                <div key={m.id} className={`flex gap-6 ${m.role === 'user' ? 'justify-end' : ''} animate-in slide-in-from-bottom-2 fade-in duration-500`}>
-                  {m.role === 'assistant' && (
-                    <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center flex-shrink-0 mt-1 border border-[var(--primary)]/20 shadow-lg"><Icons.Logo /></div>
-                  )}
-                  <div className={`relative ${m.role === 'user' ? 'message-user' : 'message-ai flex-1'}`}>
-                    <div className="prose prose-invert prose-emerald max-w-none text-sm leading-relaxed">
-                      <ReactMarkdown components={{
-                          code({ node, inline, className, children, ...props }: any) {
-                            return !inline ? <EnhancedCodeBlock>{String(children)}</EnhancedCodeBlock> : <code className="bg-white/10 px-1.5 py-0.5 rounded-md text-[var(--primary)] font-black" {...props}>{children}</code>;
-                          }
-                        }}>
+                <div key={m.id} className={`flex gap-6 ${m.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in duration-300`}>
+                  <img 
+                    src={m.role === 'user' ? userPfp : botPfp} 
+                    title={m.role === 'user' ? 'Operator' : 'Arrow (Click to Change)'}
+                    onClick={() => { if(m.role==='assistant'){ const u = prompt('Neural Avatar URL:'); if(u){setBotPfp(u); localStorage.setItem('arrow_v8_bot_pfp',u);}}} } 
+                    className={`w-10 h-10 rounded-full border border-[var(--border)] object-cover cursor-pointer hover:ring-2 ring-[var(--primary)] transition-all ${m.role === 'assistant' && isAiSpeaking ? 'ring-2 ring-[var(--primary)] animate-pulse' : ''}`} 
+                  />
+                  <div className={m.role === 'user' ? 'message-user' : 'message-ai'}>
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-emerald">
+                      <ReactMarkdown components={{ 
+                        code({ className, children, inline }: any) { 
+                          return !inline ? 
+                            <CodeBlock className={className}>{children}</CodeBlock> : 
+                            <code className="bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-[var(--primary)] font-bold">{children}</code>; 
+                        } 
+                      }}>
                         {m.content}
                       </ReactMarkdown>
-                      {m.sources && m.sources.length > 0 && (
-                        <div className="mt-6 flex flex-wrap gap-2 pt-4 border-t border-white/5">
-                          {m.sources.map((s: any, i: number) => (
-                            <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] rounded-xl text-[10px] font-bold hover:bg-white/[0.08] transition-all border border-white/5 text-[var(--text-muted)] hover:text-white">
-                              <Icons.Globe /> {s.title || "Source"}
-                            </a>
-                          ))}
+                      {m.imageUrl && <img src={m.imageUrl} className="mt-4 rounded-2xl w-full border border-[var(--border)] shadow-xl animate-in zoom-in-95 duration-500" />}
+                      {m.videoUrl && (
+                        <div className="mt-4 rounded-2xl overflow-hidden border border-[var(--border)] shadow-xl animate-in zoom-in-95 duration-500 bg-black">
+                          <video controls autoPlay loop className="w-full">
+                            <source src={m.videoUrl} type="video/mp4" />
+                          </video>
                         </div>
                       )}
+                      {m.isTyping && !m.content && <div className="flex gap-1.5 mt-4"><div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce" /><div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce [animation-delay:0.2s]" /><div className="w-1.5 h-1.5 bg-[var(--primary)] rounded-full animate-bounce [animation-delay:0.4s]" /></div>}
                     </div>
                   </div>
                 </div>
               ))
             )}
-            <div ref={scrollRef} className="h-8" />
+            <div ref={scrollRef} className="h-24" />
           </div>
         </div>
 
-        {/* Markdown Preview */}
-        {isPreviewOpen && input.trim() && (
-          <div className="absolute bottom-[110px] left-1/2 -translate-x-1/2 w-full max-w-4xl px-8 z-20 animate-in slide-in-from-bottom-4 fade-in duration-300">
-            <div className="glass-effect rounded-[2rem] p-8 border border-[var(--primary)]/30 shadow-2xl overflow-y-auto max-h-[45vh] bg-[#0d0d0f]/90">
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-white/10">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--primary)]">Neural Preview Engine</span>
-                <button onClick={() => setIsPreviewOpen(false)} className="text-white/20 hover:text-white"><Icons.X /></button>
-              </div>
-              <div className="prose prose-invert prose-emerald text-sm"><ReactMarkdown>{input}</ReactMarkdown></div>
-            </div>
-          </div>
-        )}
-
-        {/* Input Dock */}
-        <div className="p-8 pt-2">
+        {/* Input UI */}
+        <div className="p-6 md:p-10 pt-2">
           <div className="max-w-3xl mx-auto">
-            <div className="input-dock flex items-end px-4 py-3 gap-1">
-              <button 
-                onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-                className={`p-3 rounded-xl transition-all ${isPreviewOpen ? 'text-[var(--primary)] bg-[var(--primary)]/10' : 'text-white/20 hover:text-white/60'}`}
-              >
-                <Icons.Eye />
-              </button>
+            <div className="input-dock flex items-end p-2 px-4 gap-2">
+              <button onClick={() => handleSend(undefined, 'image')} className="p-3 hover:text-[var(--primary)] transition-colors" title="Neural Visual Synth"><Icons.Image /></button>
+              <button onClick={() => handleSend(undefined, 'video')} className="p-3 hover:text-[var(--primary)] transition-colors" title="Temporal Stream Synth"><Icons.Sparkles /></button>
               <textarea 
                 rows={1} value={input}
-                onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 220) + 'px'; }}
+                onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px'; }}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
-                placeholder="Initialize neural input..."
-                className="flex-1 bg-transparent border-none outline-none resize-none px-4 py-2.5 text-[15px] placeholder:text-white/10 font-medium leading-relaxed"
+                placeholder="Message ArrowIntelligence..."
+                className="flex-1 bg-transparent border-none outline-none resize-none py-3.5 text-[15px] placeholder:text-[var(--text-muted)] font-medium leading-relaxed"
               />
-              <button 
-                onClick={handleSend} disabled={!input.trim() || isTyping}
-                className={`p-3.5 rounded-2xl transition-all active:scale-90 ${input.trim() ? 'bg-[var(--primary)] text-white shadow-xl' : 'bg-white/5 text-white/10'}`}
-              >
-                <Icons.Send />
-              </button>
+              <button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className={`p-3 rounded-xl mb-1 transition-all ${input.trim() ? 'bg-[var(--primary)] text-white shadow-lg active:scale-95' : 'text-[var(--text-muted)] opacity-20'}`}><Icons.Send /></button>
             </div>
-            <div className="mt-5 flex justify-center gap-10 text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)] opacity-30 select-none">
-              <span className="flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-green-500" /> Proxy-Aware Node</span>
-              <span>Gemini Pro Native</span>
-              <span>v3.4.0 Engine</span>
-            </div>
+            <p className="text-center text-[9px] text-[var(--text-muted)] mt-4 uppercase tracking-[0.2em] font-black select-none">Neural Link Prime v8.4 | Optimized Live Engine</p>
           </div>
         </div>
+
+        {/* Fullscreen Voice/Video Overlay */}
+        {callMode === 'voice' && (
+          <div className="absolute inset-0 z-[60] glass-effect flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500">
+             <div className="relative flex flex-col items-center gap-6">
+                <div className={`relative rounded-full border-4 border-[var(--primary)] overflow-hidden transition-all duration-500 ${isAiSpeaking ? 'scale-105 shadow-[0_0_60px_var(--primary-glow)]' : ''}`}>
+                   {isCamEnabled ? (
+                      <video ref={localVideoRef} autoPlay muted playsInline className="w-60 h-60 object-cover rounded-full" />
+                   ) : (
+                      <img src={botPfp} className="w-44 h-44 object-cover" />
+                   )}
+                   {isCamEnabled && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-4">
+                         <span className="text-[10px] font-black text-white uppercase tracking-widest">Neural Vision Active</span>
+                      </div>
+                   )}
+                </div>
+                {isAiSpeaking && (
+                   <div className="flex items-end h-12">
+                      {[...Array(8)].map((_, i) => <div key={i} className="wave-bar" style={{ animationDelay: `${i*0.1}s` }} />)}
+                   </div>
+                )}
+             </div>
+             <div className="text-center space-y-3">
+                <h3 className="text-3xl font-black tracking-tight text-white uppercase">Linked</h3>
+                <p className={`text-[11px] font-black uppercase tracking-[0.4em] transition-colors ${isAiSpeaking ? 'text-[var(--primary)]' : 'text-white/30'}`}>
+                  {isAiSpeaking ? 'RECEIVING SIGNAL' : 'LISTENING FOR SIGNAL'}
+                </p>
+             </div>
+             <div className="flex gap-6">
+                <button onClick={endCall} className="w-20 h-20 bg-red-600 text-white rounded-[2.5rem] flex items-center justify-center shadow-2xl hover:bg-red-700 transition-all active:scale-90"><Icons.X /></button>
+             </div>
+          </div>
+        )}
       </main>
+
+      {/* Right Panel (Drift Tangents) */}
+      <aside className="hidden xl:flex w-72 bg-[var(--bg-sidebar)] border-l border-[var(--border)] flex-col p-8 space-y-10">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--primary)] mb-8">Neural Drift</p>
+          <div className="space-y-5">
+            {driftTangents.length === 0 ? (
+               <div className="p-6 border-2 border-dashed border-[var(--border)] rounded-2xl text-center text-[10px] text-[var(--text-muted)] font-black italic opacity-40 leading-relaxed uppercase">Mapping cognitive trajectories...</div>
+            ) : driftTangents.map((t, i) => (
+              <button key={i} onClick={() => handleSend(t)} className="w-full p-5 rounded-2xl bg-[var(--bg-main)] border border-[var(--border)] text-left hover:border-[var(--primary)] transition-all group active:scale-95">
+                <p className="text-[11px] text-[var(--text-muted)] font-bold leading-relaxed group-hover:text-[var(--text-main)] transition-colors">{t}</p>
+                <div className="mt-4 flex items-center gap-2 text-[9px] font-black uppercase text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0">Engage Synapse &rarr;</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </aside>
     </div>
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+createRoot(document.getElementById('root')!).render(<App />);
