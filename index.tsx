@@ -23,15 +23,19 @@ const parseNeuralError = (err: any) => {
   const advice: Record<number, string> = {
     429: "Neural throughput exhausted. Rate limit hit.",
     401: "Uplink rejected. Invalid API key.",
-    403: "Permission denied. Check billing.",
+    403: "Permission denied. This project likely needs billing enabled in Google Cloud Console.",
+    404: "Model not found or unavailable in your region.",
     503: "Service overloaded.",
   };
 
   try {
     let errorData = err;
     if (err instanceof Error) {
-      try { errorData = JSON.parse(err.message); } catch {
+      try {
+        errorData = JSON.parse(err.message);
+      } catch {
         if (err.message.includes("429")) return { code: 429, message: advice[429], detail: "Quota" };
+        if (err.message.includes("403")) return { code: 403, message: advice[403], detail: "Permission" };
         return { code: 0, message: err.message || defaultMsg, detail: "Fault" };
       }
     }
@@ -64,6 +68,7 @@ const Icons = {
   Camera: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
   Alert: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>,
   Mic: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
+  Key: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.778-7.778zm0 0L15.5 7.5m0 0l3 3m-3-3l2.5-2.5"/></svg>,
 };
 
 // --- Helpers ---
@@ -124,7 +129,7 @@ const CodeBlock = ({ className, children }: { className?: string, children?: any
   );
 };
 
-const SignalFaultMessage = ({ error, onRetry }: { error: any, onRetry: () => void }) => {
+const SignalFaultMessage = ({ error, onRetry, onSwitchKey }: { error: any, onRetry: () => void, onSwitchKey: () => void }) => {
   return (
     <div className="mt-4 p-5 rounded-2xl border border-red-500/30 bg-red-500/5 animate-pulse-slow">
       <div className="flex items-start gap-4">
@@ -132,9 +137,12 @@ const SignalFaultMessage = ({ error, onRetry }: { error: any, onRetry: () => voi
         <div className="flex-1 space-y-2">
           <h4 className="text-xs font-black uppercase tracking-[0.2em] text-red-500">Signal Jammed</h4>
           <p className="text-sm font-medium leading-relaxed">{error.message}</p>
-          <div className="pt-2 flex items-center gap-4">
-            <button onClick={onRetry} className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">Retry</button>
-            <span className="text-[9px] font-black uppercase tracking-widest text-red-500/50">Error: {error.code || 'X'}</span>
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <button onClick={onRetry} className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">Retry Signal</button>
+            {(error.code === 403 || error.code === 401) && (
+              <button onClick={onSwitchKey} className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 border border-red-500 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-all">Select Different Key</button>
+            )}
+            <span className="text-[9px] font-black uppercase tracking-widest text-red-500/50">Fault Code: {error.code || 'X'}</span>
           </div>
         </div>
       </div>
@@ -188,10 +196,6 @@ const App = () => {
     const text = forcedText || input;
     if (!text.trim() || isTyping) return;
     
-    if (type === 'video') {
-      if (!(await window.aistudio?.hasSelectedApiKey())) await window.aistudio?.openSelectKey();
-    }
-
     const sid = activeId || Date.now().toString();
     const userMsg = { role: 'user', content: text, id: Date.now(), type };
     const aiMsg = { role: 'assistant', content: '', id: Date.now() + 1, isTyping: true, type, error: null };
@@ -211,6 +215,7 @@ const App = () => {
         const url = await geminiService.generateImage(text);
         setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: 'Neural visual synth complete.', imageUrl: url, isTyping: false } : m) } : s));
       } else if (type === 'video') {
+        if (!(await window.aistudio?.hasSelectedApiKey())) await window.aistudio?.openSelectKey();
         const url = await geminiService.generateVideo(text);
         setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, content: 'Temporal stream generated.', videoUrl: url, isTyping: false } : m) } : s));
       } else {
@@ -226,6 +231,10 @@ const App = () => {
       }
     } catch (e: any) {
       const parsed = parseNeuralError(e);
+      if (parsed.code === 401 || parsed.code === 403) {
+        // Automatically prompt for a new key on permission errors
+        await window.aistudio?.openSelectKey();
+      }
       setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: s.messages.map(m => m.id === aiMsg.id ? { ...m, error: parsed, isTyping: false } : m) } : s));
     } finally { setIsTyping(false); }
   };
@@ -329,7 +338,11 @@ const App = () => {
         }
       });
       sessionPromiseRef.current = sessionPromise;
-    } catch (e) { alert(`Fault: ${parseNeuralError(e).message}`); }
+    } catch (e: any) { 
+        const parsed = parseNeuralError(e);
+        if (parsed.code === 403 || parsed.code === 401) window.aistudio?.openSelectKey();
+        alert(`Neural Signal Fault: ${parsed.message}`); 
+    }
   };
 
   const endCall = () => {
@@ -358,10 +371,10 @@ const App = () => {
           </div>
           <div className="mt-auto pt-4 border-t border-[var(--border)] flex flex-col gap-3">
              <div className="flex items-center gap-3">
-                <img src={userPfp} onClick={() => { const u = prompt('User Avatar:'); if(u) setUserPfp(u); }} className="w-10 h-10 rounded-full border border-[var(--border)] cursor-pointer hover:ring-2 ring-[var(--primary)]" />
+                <img src={userPfp} onClick={() => { const u = prompt('User Avatar URL:'); if(u) setUserPfp(u); }} className="w-10 h-10 rounded-full border border-[var(--border)] cursor-pointer hover:ring-2 ring-[var(--primary)]" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate">Operator</p>
-                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="text-[10px] font-black uppercase text-[var(--text-muted)] hover:text-[var(--primary)]">{isDarkMode ? 'LIGHT MODE' : 'DARK MODE'}</button>
+                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="text-[10px] font-black uppercase text-[var(--text-muted)] hover:text-[var(--primary)]">{isDarkMode ? 'LIGHT THEME' : 'DARK THEME'}</button>
                 </div>
              </div>
              <p className="text-[10px] text-[var(--text-muted)] font-black">CREATED BY <span className="text-[var(--primary)]">devvyE_yo</span></p>
@@ -377,6 +390,13 @@ const App = () => {
             <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-[var(--text-muted)]"><Icons.Logo /> ArrowIntelligence</div>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => window.aistudio?.openSelectKey()} 
+              className="p-2 text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-white/5 rounded-lg transition-all"
+              title="Change Neural API Key"
+            >
+              <Icons.Key />
+            </button>
             <button onClick={() => setIsCamEnabled(!isCamEnabled)} className={`p-2 rounded-lg transition-all ${isCamEnabled ? 'text-[var(--primary)] bg-[var(--primary-glow)] shadow-[0_0_15px_rgba(16,163,127,0.3)]' : 'text-[var(--text-muted)] hover:bg-white/5'}`}><Icons.Camera /></button>
             <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none border border-[var(--border)] rounded-lg px-2 py-1">
                {['Zephyr','Puck','Kore','Fenrir','Charon'].map(v => <option key={v} value={v}>{v}</option>)}
@@ -405,7 +425,13 @@ const App = () => {
                   <img src={m.role === 'user' ? userPfp : botPfp} className="w-10 h-10 rounded-full border border-[var(--border)] shrink-0" />
                   <div className={m.role === 'user' ? 'message-user' : 'message-ai'}>
                     <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {m.error ? <SignalFaultMessage error={m.error} onRetry={() => handleSend(activeSession.messages.findLast(x=>x.role==='user')?.content)} /> : (
+                      {m.error ? (
+                        <SignalFaultMessage 
+                            error={m.error} 
+                            onRetry={() => handleSend(activeSession.messages.findLast(x=>x.role==='user')?.content)} 
+                            onSwitchKey={() => window.aistudio?.openSelectKey()}
+                        />
+                      ) : (
                         <ReactMarkdown components={{ code: CodeBlock }}>{m.content}</ReactMarkdown>
                       )}
                       {m.imageUrl && <img src={m.imageUrl} className="mt-4 rounded-2xl w-full border border-[var(--border)] shadow-xl" />}
@@ -422,12 +448,12 @@ const App = () => {
         <div className="p-6 md:p-10 pt-2 bg-gradient-to-t from-[var(--bg-main)] to-transparent">
           <div className="max-w-3xl mx-auto">
             <div className="input-dock flex items-end p-2 px-4 gap-2">
-              <button onClick={() => handleSend(undefined, 'image')} className="p-3 text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors"><Icons.Image /></button>
-              <button onClick={() => handleSend(undefined, 'video')} className="p-3 text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors"><Icons.Sparkles /></button>
+              <button onClick={() => handleSend(undefined, 'image')} className="p-3 text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors" title="Generate Image"><Icons.Image /></button>
+              <button onClick={() => handleSend(undefined, 'video')} className="p-3 text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors" title="Generate Video (Veo)"><Icons.Sparkles /></button>
               <textarea rows={1} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Transmit neural query..." className="flex-1 bg-transparent border-none outline-none resize-none py-3.5 text-[15px] placeholder:text-[var(--text-muted)] font-medium" />
               <button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className={`p-3 rounded-xl mb-1 transition-all ${input.trim() ? 'bg-[var(--primary)] text-white shadow-lg active:scale-95' : 'text-[var(--text-muted)] opacity-20'}`}><Icons.Send /></button>
             </div>
-            <p className="text-center text-[9px] text-[var(--text-muted)] mt-4 uppercase tracking-[0.2em] font-black">Neural Link v8.6 | Immersive Intercom Engine</p>
+            <p className="text-center text-[9px] text-[var(--text-muted)] mt-4 uppercase tracking-[0.2em] font-black">Neural Link v8.8 | Auto-Fault Recovery</p>
           </div>
         </div>
 
